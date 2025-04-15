@@ -44,7 +44,9 @@ const rows = [
     ['期限（月/期）', '', '', '', Number(term)],
     ['起息日', '', '', '', startDate],
     ['到期日', '', '', '', endDate],
-    ['还款方式', '', '', '', repayment],
+    ['还款方式', '', '', '', repayment], // 第11行
+    ['', '', '', '', ''],               // 第12行
+    ['', '', '', '', ''],               // 第13行
   ];
   
   // 插入行
@@ -55,29 +57,34 @@ const rows = [
   // 合并单元格
   worksheet.mergeCells('A1:E1');
   worksheet.mergeCells('A2:E2');
-  for (let i = 3; i <= 11; i++) {
+  for (let i = 3; i <= 10; i++) {
     worksheet.mergeCells(`A${i}:D${i}`);
   }
-  
+  // 还款方式占三行（A11:D13, E11:E13）
+worksheet.mergeCells('A11:D13');
+worksheet.mergeCells('E11:E13');
+
+worksheet.getCell('A15').value = { formula: 'E6+E7', result: 0 };
+
   // 设置样式
-  worksheet.eachRow((row, rowNumber) => {
+worksheet.eachRow((row, rowNumber) => {
     row.eachCell((cell, colNumber) => {
-      // 所有单元格居中
-      cell.alignment = { vertical: 'middle', horizontal: 'center' };
-  
-      // 百分比格式（第6行和第7行，第5列即 E 列）
-      if ((rowNumber === 6 || rowNumber === 7) && colNumber === 5) {
+        // 所有单元格居中
+        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true, };
+
+        // 百分比格式（第6行和第7行，第5列即 E 列）
+        if ((rowNumber === 6 || rowNumber === 7) && colNumber === 5) {
         cell.numFmt = '0.00%';
-      }
-  
-      // 金额格式（第5行，第5列）
-      if (rowNumber === 5 && colNumber === 5) {
+        }
+
+        // 金额格式（第5行，第5列）
+        if (rowNumber === 5 && colNumber === 5) {
         cell.numFmt = '#,##0.00';
-      }
-  
-      // 其他可以根据需要添加格式
+        }
+
+
     });
-  });
+});
 
   // 导出为 buffer
   const buffer = await workbook.xlsx.writeBuffer();
