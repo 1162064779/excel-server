@@ -1,7 +1,30 @@
 const express = require('express');
 const ExcelJS = require('exceljs');
-const path = require('path');
-const open = require('child_process').exec; 
+const path = require('path'); 
+const { exec } = require('child_process');
+const os = require('os');
+
+function openUrl(url) {
+  const platform = os.platform();
+
+  let command;
+  if (platform === 'win32') {
+    command = `start "" "${url}"`;
+  } else if (platform === 'darwin') {
+    command = `open "${url}"`;
+  } else if (platform === 'linux') {
+    command = `xdg-open "${url}"`;
+  } else {
+    console.error('Unsupported OS');
+    return;
+  }
+
+  exec(command, (err) => {
+    if (err) {
+      console.error('Failed to open URL:', err);
+    }
+  });
+}
 
 const app = express();
 const PORT = 3000;
@@ -131,5 +154,5 @@ app.listen(PORT, () => {
 
   const url = `http://localhost:${PORT}`;
   // ✅ 自动打开默认浏览器访问
-  open(`start ${url}`);
+  openUrl(url);
 });
