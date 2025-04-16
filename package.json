@@ -7,6 +7,14 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
   },
+  "bin": "server.js",
+  "pkg": {
+    "assets": [
+      "public/**/*"
+    ],
+    "targets": ["node18-win-x64"],
+    "outputPath": "dist"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/1162064779/excel-server.git"

@@ -1,6 +1,7 @@
 const express = require('express');
 const ExcelJS = require('exceljs');
 const path = require('path');
+const open = require('child_process').exec; 
 
 const app = express();
 const PORT = 3000;
@@ -53,6 +54,36 @@ const rows = [
   rows.forEach((row) => {
     worksheet.addRow(row);
   });
+
+  worksheet.insertRow(15, [
+    '期数',
+    '计算日',
+    '起息日',
+    '截息日',
+    '计息天数',
+    '应还本金金额',
+    '利随本清利息',
+    '应还利息金额',
+    '已还本金金额',
+    '已还利息金额',
+    '累计未还本金金额',
+    '累计未还利息金额',
+    '复利（以当期未还利息为基数）',
+    '当期未还利息金额',
+    '复利利息标准（期内基准执行利率；期外逾期执行利率）',
+    '复利起止期限',
+    '',
+    '计息天数',
+    '罚息（以当期未还本金为基数）',
+    '当期未还本金金额',
+    '逾期利息标准',
+    '罚息起止期限',
+    '',
+    '计息天数',
+    '逾期利息（罚息+复利）',
+    '已还逾期利息',
+    '未还逾期利息'
+  ]);
   
   // 合并单元格
   worksheet.mergeCells('A1:E1');
@@ -63,8 +94,8 @@ const rows = [
   // 还款方式占三行（A11:D13, E11:E13）
 worksheet.mergeCells('A11:D13');
 worksheet.mergeCells('E11:E13');
-
-worksheet.getCell('A15').value = { formula: 'E6+E7', result: 0 };
+worksheet.mergeCells('P15:Q15');
+worksheet.mergeCells('V15:W15');
 
   // 设置样式
 worksheet.eachRow((row, rowNumber) => {
@@ -97,4 +128,8 @@ worksheet.eachRow((row, rowNumber) => {
 
 app.listen(PORT, () => {
   console.log(`✅ 服务运行中：http://localhost:${PORT}`);
+
+  const url = `http://localhost:${PORT}`;
+  // ✅ 自动打开默认浏览器访问
+  open(`start ${url}`);
 });
