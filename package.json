@@ -5,15 +5,17 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "npm run build:win",
+    "build:all": "npm run build:win && npm run build:mac",
+    "build:win": "pkg . --targets node18-win-x64 --out-path dist",
+    "build:mac": "pkg . --targets node18-macos-x64,node18-macos-arm64 --out-path dist"
   },
   "bin": "server.js",
   "pkg": {
     "assets": [
       "public/**/*"
-    ],
-    "targets": ["node18-win-x64"],
-    "outputPath": "dist"
+    ]
   },
   "repository": {
     "type": "git",
