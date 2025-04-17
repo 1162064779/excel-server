@@ -23,7 +23,7 @@
       margin-top: 1rem;
       font-weight: bold;
     }
-    input, textarea {
+    input, select, textarea {
       width: 100%;
       padding: 0.5rem;
       margin-top: 0.5rem;
@@ -40,57 +40,90 @@
       cursor: pointer;
       border-radius: 4px;
     }
+    .summary {
+      margin-top: 0.5rem;
+      background: #f0f0f0;
+      padding: 0.5rem;
+      border-left: 4px solid #ccc;
+      font-style: italic;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h2>生成借款明细表</h2>
+
     <label>借款人姓名</label>
-    <input id="name" placeholder="沈志杰" />
+    <input id="name" value="沈志杰" />
 
     <label>借款本金</label>
-    <input id="amount" type="number" placeholder="61000" />
+    <input id="amount" type="number" value="61000" />
 
     <label>年利率 (%)</label>
-    <input id="rate" type="number" step="0.01" placeholder="12.96" />
+    <input id="rate" type="number" step="0.01" value="12.96" />
 
     <label>逾期年利率 (%)</label>
-    <input id="lateRate" type="number" step="0.01" placeholder="19.44" />
+    <input id="lateRate" type="number" step="0.01" value="19.44" />
 
     <label>期限（月/期）</label>
-    <input id="term" type="number" placeholder="12" />
+    <input id="term" type="number" value="12" />
 
     <label>起息日</label>
-    <input id="startDate" placeholder="2023年7月18日" />
+    <input id="startDate" value="2023年10月18日" />
 
     <label>到期日</label>
-    <input id="endDate" placeholder="2024年7月18日" />
+    <input id="endDate" value="2024年10月18日" />
 
-    <label>还款方式</label>
-    <textarea id="repayment" rows="3" placeholder="每月付息，期末本息一次付清。结息周期：每月21日结息"></textarea>
+    <label>还款方式模板</label>
+    <select id="repaymentTemplate" onchange="updateRepaymentPreview()">
+      <option value="1">先息后本</option>
+      <option value="2">等额本息</option>
+      <option value="3">等额本金</option>
+    </select>
+
+    <label>结息日（每月第几天）</label>
+    <input id="interestDay" type="number" min="1" max="31" value="21" oninput="updateRepaymentPreview()" />
+
+    <label>生成的还款方式说明</label>
+    <div class="summary" id="repaymentPreview">每月付息，期末本息一次付清。结息周期：每月21日结息</div>
 
     <button onclick="submitForm()">生成 Excel</button>
   </div>
 
   <script>
+    const repaymentTemplates = {
+      1: "每月付息，期末本息一次付清。结息周期：每月{day}日结息",
+      2: "等额本息，每月固定还款额。结息周期：每月{day}日结息",
+      3: "等额本金，每月本金固定，利息逐期递减。结息周期：每月{day}日结息"
+    };
+
+    function updateRepaymentPreview() {
+      const templateId = document.getElementById("repaymentTemplate").value;
+      const day = document.getElementById("interestDay").value || "21";
+      const template = repaymentTemplates[templateId];
+      const result = template.replace("{day}", day);
+      document.getElementById("repaymentPreview").textContent = result;
+    }
+
     function submitForm() {
-      // 获取输入框元素
-      const getValue = (id) => {
-        const el = document.getElementById(id);
-        return el.value.trim() || el.placeholder;
-      };
-  
+      const getValue = (id) => document.getElementById(id).value.trim();
+
+      const repaymentType = parseInt(getValue("repaymentTemplate"));
+      const repayment = document.getElementById("repaymentPreview").textContent;
+
       const data = {
         name: getValue("name"),
-        amount: getValue("amount"),
-        rate: getValue("rate"),
-        lateRate: getValue("lateRate"),
-        term: getValue("term"),
+        amount: Number(getValue("amount")),
+        rate: Number(getValue("rate")),
+        lateRate: Number(getValue("lateRate")),
+        term: Number(getValue("term")),
         startDate: getValue("startDate"),
         endDate: getValue("endDate"),
-        repayment: getValue("repayment")
+        repayment,             // 拼接后的描述文本
+        repaymentType: Number(repaymentType),  // 模板编号
+        interestDay: Number(getValue("interestDay"))
       };
-  
+
       fetch('/generate-excel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -101,13 +134,16 @@
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `test_xp.xlsx`;
+        a.download = `xptest.xlsx`;
         document.body.appendChild(a);
         a.click();
         a.remove();
         window.URL.revokeObjectURL(url);
       });
     }
+
+    // 初始化一次
+    updateRepaymentPreview();
   </script>
 </body>
 </html>
