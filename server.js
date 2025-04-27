@@ -131,43 +131,305 @@ async function generateExcelBuffer(groups = []) {
     worksheet.mergeCells('P15:Q15');
     worksheet.mergeCells('V15:W15');
 
+    // 起息日、到期日、开始行
     const startDateParsed = dayjs(startDate);
     const endDateParsed = dayjs(endDate);
+    const currentDateParsed = dayjs(currentDate);
     const startRow = 16;
 
-    for (let i = 0; i <= term; i++) {
-      const row = worksheet.getRow(startRow + i);
-      row.getCell(1).value = i;  // 期数
+    // 期数 0，空着
+    const row0 = worksheet.getRow(startRow);
+    row0.getCell(1).value = 0;
+    row0.commit();
 
-      if (i === 0) {
-        row.commit();
-        continue;
-      }
+    // 检查 intimeTerm
+    if (intimeTerm < 0 || intimeTerm > term) {
+      throw new Error(`提前还款期限 intimeTerm(${
+          intimeTerm}) 超出范围，应在 0-${term} 之间`);
+    }
 
-      const currentRow = startRow + i;
-      const prevDRow = currentRow - 1;
+    let firstInterestEndDate;
+    // 确定读取 periods 的起始行
+    let periodsStartRow = intimeTerm > 0 ? startRow + 2 : startRow + 1;
+    let periodsEndRow = -1;
 
-      if (i === 1) {
-        row.getCell(3).value = startDateParsed.format('YYYY/MM/DD');  // 起息日
+    // 生成提前还款 (只生成一行)
+    if (intimeTerm > 0) {
+      const row = worksheet.getRow(startRow + 1);
+
+      // 期数列
+      if (intimeTerm === 1) {
+        row.getCell(1).value = 1;
       } else {
-        row.getCell(3).value = {formula: `D${prevDRow}`};
+        row.getCell(1).value = `1-${intimeTerm}`;
       }
 
-      if (i === term) {
-        row.getCell(4).value = endDateParsed.format('YYYY/MM/DD');  // 截息日
-      } else {
-        const monthOffset = i - 1;
-        const tentative =
-            startDateParsed.add(monthOffset, 'month').set('date', interestDay);
-        let adjustedDate = tentative;
-        if (tentative.isBefore(
-                startDateParsed.add(monthOffset, 'month'), 'day')) {
-          adjustedDate = tentative.add(1, 'month');
-        }
-        row.getCell(4).value = adjustedDate.format('YYYY/MM/DD');
+      // 起息日
+      row.getCell(3).value = startDateParsed.format('YYYY/MM/DD');
+
+      // 计算第一段的结息日
+      let tentativeEndDate = startDateParsed.add(intimeTerm, 'month');
+
+      // 如果起息日的“日”大于 interestDay，需要额外再推1个月
+      if (startDateParsed.date() > interestDay) {
+        tentativeEndDate = tentativeEndDate.add(1, 'month');
       }
+
+      // 最后把日子设置成固定的 interestDay
+      tentativeEndDate = tentativeEndDate.set('date', interestDay);
+
+      firstInterestEndDate = tentativeEndDate;
+
+      row.getCell(4).value = firstInterestEndDate.format('YYYY/MM/DD');
 
       row.commit();
+    }
+
+    let isBeforeCurrent = true;
+
+    // 生成剩余期数，从 intimeTerm+1 到 term
+    for (let i = intimeTerm + 1; i <= term; i++) {
+      const rowIndex = startRow + (i - intimeTerm) + 1;
+      const row = worksheet.getRow(rowIndex);
+
+      // 期数列
+      row.getCell(1).value = i;
+
+      // 起息日
+      if (i === intimeTerm + 1) {
+        row.getCell(3).value = firstInterestEndDate.format('YYYY/MM/DD');
+      } else {
+        const prevEndDate = worksheet.getRow(rowIndex - 1).getCell(4).value;
+        row.getCell(3).value = prevEndDate;
+      }
+
+      // 结息日
+
+      const prevEndDateStr = worksheet.getRow(rowIndex).getCell(3).value;
+      const prevEndDateParsed = dayjs(prevEndDateStr);
+
+      let nextEndDate =
+          prevEndDateParsed.add(1, 'month').set('date', interestDay);
+
+      if (nextEndDate.isBefore(prevEndDateParsed.add(1, 'month'), 'day')) {
+        nextEndDate = nextEndDate.add(1, 'month');
+      }
+
+      if (nextEndDate.isAfter(endDateParsed, 'day')) {
+        nextEndDate = endDateParsed;
+        row.getCell(4).value = nextEndDate.format('YYYY/MM/DD');
+        console.log(`超过总 endDate，使用最终 endDate ${
+            nextEndDate.format('YYYY/MM/DD')}`);
+        periodsEndRow = rowIndex;
+        break;
+      } else if (nextEndDate.isAfter(currentDateParsed, 'day')) {
+        nextEndDate = currentDateParsed;
+        row.getCell(4).value = nextEndDate.format('YYYY/MM/DD');
+        console.log(`超过 currentDate，使用当前 currentDate ${
+            nextEndDate.format('YYYY/MM/DD')}`);
+        periodsEndRow = rowIndex;
+        isBeforeCurrent = false;
+        break;
+      } else {
+        row.getCell(4).value = nextEndDate.format('YYYY/MM/DD');
+      }
+      row.commit();
+    }
+
+    // 读取 periods（已有）
+    const periods = [];
+    for (let i = periodsStartRow; i <= periodsEndRow; i++) {
+      const row = worksheet.getRow(i);
+      const period = {
+        row: i,
+        period: row.getCell(1).value,
+        start: dayjs(row.getCell(3).value),
+        end: dayjs(row.getCell(4).value),
+      };
+      periods.push(period);
+    }
+
+    // 排序 paymentPairs
+    paymentPairs.sort(
+        (a, b) => dayjs(a.date).isAfter(dayjs(b.date), 'day') ? 1 : -1);
+
+    console.log(`当前 paymentPairs 列表:`);
+    paymentPairs.forEach((pair, index) => {
+      console.log(
+          `  [${index}] 日期: ${dayjs(pair.date).format('YYYY/MM/DD')}, 金额: ${
+              pair.value}, 类型: ${pair.type}`);
+    });
+
+    const newPeriods = [];
+    const specialPairs = [];
+    let paymentIndex = 0;  // paymentPairs处理到的位置
+
+    for (let i = 0; i < periods.length; i++) {
+      const currentPeriod = periods[i];
+      const nextPeriod = periods[i + 1];  // 可能没有，记得判断
+
+      console.log(`\n处理 period ${currentPeriod.period}: ${
+          currentPeriod.start.format(
+              'YYYY/MM/DD')} ~ ${currentPeriod.end.format('YYYY/MM/DD')}`);
+
+
+      let subIndex = 1;  // 子期编号，例如 (1)、(2)、(3) ...
+
+      // 只在 i == 0 时额外处理
+      if (i === 0) {
+        const firstPayment = paymentPairs[paymentIndex];
+        if (firstPayment) {
+          let paymentDate = dayjs(firstPayment.date);
+
+          while (paymentIndex < paymentPairs.length &&
+                 paymentDate.isBefore(currentPeriod.end, 'day')) {
+            const prevSubPeriodName =
+                `${currentPeriod.period - 1}(${subIndex})`;
+
+            const lastEndDate = newPeriods.length > 0 ?
+                newPeriods[newPeriods.length - 1].end :
+                currentPeriod.start;
+
+            console.log(`插入前置子期 ${prevSubPeriodName}: ${
+                lastEndDate.format(
+                    'YYYY/MM/DD')} ~ ${paymentDate.format('YYYY/MM/DD')}`);
+
+            newPeriods.push({
+              period: prevSubPeriodName,
+              start: lastEndDate,
+              end: paymentDate,
+            });
+
+            subIndex++;
+            paymentIndex++;  // 处理下一个 payment
+
+            // 准备下一个 payment
+            if (paymentIndex < paymentPairs.length) {
+              const nextPayment = paymentPairs[paymentIndex];
+              if (nextPayment) {
+                // 更新 paymentDate
+                paymentDate = dayjs(nextPayment.date);
+
+                // 继续 while 判断
+                if (!paymentDate.isBefore(currentPeriod.end, 'day')) {
+                  break;
+                }
+              } else {
+                break;
+              }
+            } else {
+              break;
+            }
+          }
+        }
+      }
+      // 先插入原 period
+      newPeriods.push({
+        period: currentPeriod.period,
+        start: currentPeriod.start,
+        end: currentPeriod.end,
+      });
+
+      subIndex = 1;  // 子期编号，例如 (1)、(2)、(3) ...
+
+      // 如果还有 paymentPairs 没处理完
+      while (paymentIndex < paymentPairs.length) {
+        const currentPayment = paymentPairs[paymentIndex];
+        const paymentDate = dayjs(currentPayment.date);
+        if (paymentDate.isSame(currentPeriod.end, 'day')) {
+          const specialPair = {
+            period: currentPeriod.period,
+            value: currentPayment.value,
+            type: currentPayment.type,
+          };
+
+          console.log(`插入 specialPair:`, specialPair);
+
+          specialPairs.push(specialPair);
+
+          paymentIndex++;
+          continue;
+        }
+
+        // 判断是否要插入到当前period下面
+        if (nextPeriod) {
+          if (paymentDate.isBefore(nextPeriod.end, 'day')) {
+            // 插入子期
+            const lastEndDate =
+                newPeriods[newPeriods.length - 1].end;  // 上一个period的end
+
+            const subPeriodName = `${currentPeriod.period}(${subIndex})`;
+
+            console.log(`插入子期 ${subPeriodName}: ${
+                lastEndDate.format(
+                    'YYYY/MM/DD')} ~ ${paymentDate.format('YYYY/MM/DD')}`);
+
+            newPeriods.push({
+              period: subPeriodName,
+              start: lastEndDate,
+              end: paymentDate,
+            });
+
+            subIndex++;
+            paymentIndex++;  // 移动到下一个 paymentPair
+          } else {
+            // 当前 paymentPair 不属于这个 period，停止 while，去处理下一个
+            // period
+            break;
+          }
+        } else {
+          // 如果已经是最后一个 period（没有 nextPeriod了）
+          // 那么剩下的 paymentPairs 都归到最后一个 period处理
+          const lastEndDate = newPeriods[newPeriods.length - 1].end;
+
+          const subPeriodName = `${currentPeriod.period}(${subIndex})`;
+
+          console.log(`最后插入子期 ${subPeriodName}: ${
+              lastEndDate.format(
+                  'YYYY/MM/DD')} ~ ${paymentDate.format('YYYY/MM/DD')}`);
+
+          newPeriods.push({
+            period: subPeriodName,
+            start: lastEndDate,
+            end: paymentDate,
+          });
+
+          subIndex++;
+          paymentIndex++;  // 移动到下一个 paymentPair
+        }
+      }
+    }
+
+    // 重新写回 worksheet
+    let currentRowIdx = periodsStartRow;
+    for (const newPeriod of newPeriods) {
+      const row = worksheet.getRow(currentRowIdx);
+
+      row.getCell(1).value = newPeriod.period;
+      row.getCell(3).value = newPeriod.start.format('YYYY/MM/DD');
+      row.getCell(4).value = newPeriod.end.format('YYYY/MM/DD');
+
+      console.log(`写入 Row ${currentRowIdx}：期数 ${newPeriod.period}，${
+          newPeriod.start.format(
+              'YYYY/MM/DD')} ~ ${newPeriod.end.format('YYYY/MM/DD')}`);
+
+      row.commit();
+      currentRowIdx++;
+    }
+
+    if (isBeforeCurrent) {
+      const row = worksheet.getRow(currentRowIdx);
+
+      row.getCell(1).value = '到期后';
+      row.getCell(3).value = endDateParsed.format('YYYY/MM/DD');
+      row.getCell(4).value = currentDateParsed.format('YYYY/MM/DD');
+
+      console.log(`写入 Row ${currentRowIdx}：到期后，${
+          endDateParsed.format(
+              'YYYY/MM/DD')} ~ ${currentDateParsed.format('YYYY/MM/DD')}`);
+
+      row.commit();
+      currentRowIdx++;
     }
 
     worksheet.eachRow((row, rowNumber) => {
