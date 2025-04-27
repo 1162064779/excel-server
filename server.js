@@ -261,8 +261,9 @@ async function generateExcelBuffer(groups = []) {
     });
 
     const newPeriods = [];
-    const specialPairs = [];
-    let paymentIndex = 0;  // paymentPairs处理到的位置
+    const originRowNumbers = [];    // 记录初始 period 的真实行号
+    const insertedRowNumbers = [];  // 记录插入子期的真实行号
+    let paymentIndex = 0;           // paymentPairs处理到的位置
 
     for (let i = 0; i < periods.length; i++) {
       const currentPeriod = periods[i];
@@ -299,6 +300,7 @@ async function generateExcelBuffer(groups = []) {
               start: lastEndDate,
               end: paymentDate,
             });
+            insertedRowNumbers.push(startRow + 1 + newPeriods.length);
 
             subIndex++;
             paymentIndex++;  // 处理下一个 payment
@@ -329,6 +331,7 @@ async function generateExcelBuffer(groups = []) {
         start: currentPeriod.start,
         end: currentPeriod.end,
       });
+      originRowNumbers.push(startRow + 1 + newPeriods.length);
 
       subIndex = 1;  // 子期编号，例如 (1)、(2)、(3) ...
 
@@ -336,16 +339,31 @@ async function generateExcelBuffer(groups = []) {
       while (paymentIndex < paymentPairs.length) {
         const currentPayment = paymentPairs[paymentIndex];
         const paymentDate = dayjs(currentPayment.date);
+
+        // 处理还款日期和截止日相同的情况
         if (paymentDate.isSame(currentPeriod.end, 'day')) {
-          const specialPair = {
-            period: currentPeriod.period,
-            value: currentPayment.value,
-            type: currentPayment.type,
-          };
+          const lastNewPeriod = newPeriods[newPeriods.length - 1];
 
-          console.log(`插入 specialPair:`, specialPair);
+          if (!lastNewPeriod) {
+            throw new Error(
+                `当前 newPeriods 为空，无法给最后一个元素赋值！period: ${
+                    currentPeriod.period}`);
+          }
 
-          specialPairs.push(specialPair);
+          if (currentPayment.type === '利息') {
+            lastNewPeriod.interest = currentPayment.value;
+          } else if (currentPayment.type === '本金') {
+            lastNewPeriod.principal = currentPayment.value;
+          } else if (currentPayment.type === '逾期利息') {
+            lastNewPeriod.overdueInterest = currentPayment.value;
+          } else {
+            throw new Error(`未知的 currentPayment.type: ${
+                currentPayment.type}，无法处理！`);
+          }
+
+          console.log(`更新最后一个 newPeriod [period: ${
+              lastNewPeriod.period}]，增加字段 ${currentPayment.type}: ${
+              currentPayment.value}`);
 
           paymentIndex++;
           continue;
@@ -364,11 +382,32 @@ async function generateExcelBuffer(groups = []) {
                 lastEndDate.format(
                     'YYYY/MM/DD')} ~ ${paymentDate.format('YYYY/MM/DD')}`);
 
-            newPeriods.push({
-              period: subPeriodName,
-              start: lastEndDate,
-              end: paymentDate,
-            });
+            if (currentPayment.type === '利息') {
+              newPeriods.push({
+                period: subPeriodName,
+                start: lastEndDate,
+                end: paymentDate,
+                interest: currentPayment.value,
+              });
+            } else if (currentPayment.type === '本金') {
+              newPeriods.push({
+                period: subPeriodName,
+                start: lastEndDate,
+                end: paymentDate,
+                principal: currentPayment.value,
+              });
+            } else if (currentPayment.type === '逾期利息') {
+              newPeriods.push({
+                period: subPeriodName,
+                start: lastEndDate,
+                end: paymentDate,
+                overdueInterest: currentPayment.value,
+              });
+            } else {
+              throw new Error(`未知的 currentPayment.type: ${
+                  currentPayment.type}，无法处理！`);
+            }
+            insertedRowNumbers.push(startRow + 1 + newPeriods.length);
 
             subIndex++;
             paymentIndex++;  // 移动到下一个 paymentPair
@@ -388,11 +427,32 @@ async function generateExcelBuffer(groups = []) {
               lastEndDate.format(
                   'YYYY/MM/DD')} ~ ${paymentDate.format('YYYY/MM/DD')}`);
 
-          newPeriods.push({
-            period: subPeriodName,
-            start: lastEndDate,
-            end: paymentDate,
-          });
+          if (currentPayment.type === '利息') {
+            newPeriods.push({
+              period: subPeriodName,
+              start: lastEndDate,
+              end: paymentDate,
+              interest: currentPayment.value,
+            });
+          } else if (currentPayment.type === '本金') {
+            newPeriods.push({
+              period: subPeriodName,
+              start: lastEndDate,
+              end: paymentDate,
+              principal: currentPayment.value,
+            });
+          } else if (currentPayment.type === '逾期利息') {
+            newPeriods.push({
+              period: subPeriodName,
+              start: lastEndDate,
+              end: paymentDate,
+              overdueInterest: currentPayment.value,
+            });
+          } else {
+            throw new Error(`未知的 currentPayment.type: ${
+                currentPayment.type}，无法处理！`);
+          }
+          insertedRowNumbers.push(startRow + 1 + newPeriods.length);
 
           subIndex++;
           paymentIndex++;  // 移动到下一个 paymentPair
@@ -408,6 +468,18 @@ async function generateExcelBuffer(groups = []) {
       row.getCell(1).value = newPeriod.period;
       row.getCell(3).value = newPeriod.start.format('YYYY/MM/DD');
       row.getCell(4).value = newPeriod.end.format('YYYY/MM/DD');
+
+      if (newPeriod.principal !== undefined) {
+        row.getCell(9).value = newPeriod.principal;
+      }
+
+      if (newPeriod.interest !== undefined) {
+        row.getCell(10).value = newPeriod.interest;
+      }
+
+      if (newPeriod.overdueInterest !== undefined) {
+        row.getCell(26).value = newPeriod.overdueInterest;
+      }
 
       console.log(`写入 Row ${currentRowIdx}：期数 ${newPeriod.period}，${
           newPeriod.start.format(
@@ -429,7 +501,141 @@ async function generateExcelBuffer(groups = []) {
               'YYYY/MM/DD')} ~ ${currentDateParsed.format('YYYY/MM/DD')}`);
 
       row.commit();
-      currentRowIdx++;
+    }
+
+    console.log('原始 period 行号:', originRowNumbers);
+    console.log('插入子期行号:', insertedRowNumbers);
+
+    const firstRowIdx = startRow + 1;
+    const lastRowIdx = currentRowIdx - 1;
+
+    // 单独处理第一行
+    {
+      const firstRow = worksheet.getRow(firstRowIdx);
+
+      // 读取 E5 的值
+      const e5Value = worksheet.getRow(5).getCell(5).value;
+
+      if (e5Value === undefined || e5Value === null) {
+        throw new Error(`E5单元格为空，无法赋值到第${firstRowIdx}行的B列`);
+      }
+
+      // B列写公式 =E5
+      firstRow.getCell(2).value = {formula: `$E$5`};
+
+      // 再计算天数差，写入E列
+      const startDateCell = firstRow.getCell(3).value;  // C列
+      const endDateCell = firstRow.getCell(4).value;    // D列
+
+      let diffDays = null;
+
+      if (startDateCell && endDateCell) {
+        const startDate = dayjs(startDateCell);
+        const endDate = dayjs(endDateCell);
+
+        if (startDate.isValid() && endDate.isValid()) {
+          diffDays = endDate.diff(startDate, 'day');
+          firstRow.getCell(5).value = diffDays;  // E列写入天数差
+        } else {
+          throw new Error(`无效日期 Row ${firstRowIdx}：start=${
+              startDateCell} end=${endDateCell}`);
+        }
+      } else {
+        throw new Error(`缺少日期 Row ${firstRowIdx}：start=${
+            startDateCell} end=${endDateCell}`);
+      }
+
+      // O列写公式 = $E$6
+      const oCell = firstRow.getCell(15);  // O列是第15列
+      oCell.value = {formula: `$E$6`};
+
+      firstRow.commit();
+    }
+
+    // 处理第二行到倒数第二行
+    for (let rowIdx = startRow + 2; rowIdx <= lastRowIdx; rowIdx++) {
+      const row = worksheet.getRow(rowIdx);
+
+      // 计算E列（D列 - C列的天数差）
+      const startDateCell = row.getCell(3).value;  // C列，开始日期
+      const endDateCell = row.getCell(4).value;    // D列，结束日期
+
+      let diffDays = null;
+
+      if (startDateCell && endDateCell) {
+        const startDate = dayjs(startDateCell);
+        const endDate = dayjs(endDateCell);
+
+        if (startDate.isValid() && endDate.isValid()) {
+          diffDays = endDate.diff(startDate, 'day');
+          row.getCell(5).value = diffDays;  // E列写入天数差
+        } else {
+          throw new Error(`无效日期 Row ${rowIdx}：start=${startDateCell} end=${
+              endDateCell}`);
+        }
+      } else {
+        throw new Error(`缺少日期 Row ${rowIdx}：start=${startDateCell} end=${
+            endDateCell}`);
+      }
+
+      // 在B列写入公式 B(x) = B(x-1) - F(x)
+      const currentBCell = row.getCell(2);    // B列
+      const prevBCellRef = `B${rowIdx - 1}`;  // 上一行的B列
+      const currentFCellRef = `F${rowIdx}`;   // 当前行的F列
+
+      currentBCell.value = {formula: `${prevBCellRef} - ${currentFCellRef}`};
+
+      // O列写公式 = $E$6
+      const oCell = row.getCell(15);  // O列是第15列
+      oCell.value = {formula: `$E$6`};
+
+      row.commit();
+    }
+
+
+    if (repaymentType === 1) {  // 先息后本
+
+      // 单独处理第一行
+      {
+        const firstRow = worksheet.getRow(firstRowIdx);
+
+        // F、I、K列都设为0
+        firstRow.getCell(6).value = 0;   // F列
+        firstRow.getCell(9).value = 0;   // I列
+        firstRow.getCell(11).value = 0;  // K列
+
+        // 给 firstRow 的 H列加公式
+        const bCellRef = `B${firstRowIdx}`;
+        const eCellRef = `E${firstRowIdx}`;
+        const oCellRef = `O${firstRowIdx}`;  // O列
+        const hCell = firstRow.getCell(8);   // H列
+        hCell.value = {formula: `${bCellRef}*${oCellRef}/360*${eCellRef}`};
+
+        firstRow.commit();
+      }
+
+      // 处理第二行到倒数第二行
+      for (let rowIdx = startRow + 2; rowIdx <= lastRowIdx; rowIdx++) {
+        const row = worksheet.getRow(rowIdx);
+
+        // 如果这一行是 originRowNumbers 中的
+        if (originRowNumbers.includes(rowIdx)) {
+          // F、I、K列都设为0
+          row.getCell(6).value = 0;   // F列
+          row.getCell(9).value = 0;   // I列
+          row.getCell(11).value = 0;  // K列
+
+          // 给H列加公式
+          const bCellRef = `B${rowIdx}`;
+          const eCellRef = `E${rowIdx}`;
+          const oCellRef = `O${rowIdx}`;  // O列
+          const hCell = row.getCell(8);   // H列
+
+          hCell.value = {formula: `${bCellRef}*${oCellRef}/360*${eCellRef}`};
+        }
+
+        row.commit();
+      }
     }
 
     worksheet.eachRow((row, rowNumber) => {
