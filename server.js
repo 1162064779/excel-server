@@ -65,12 +65,22 @@ async function generateExcelBuffer(groups = []) {
     const worksheet = workbook.addWorksheet(`sheet${sheetNumber}`);
 
     worksheet.columns = [
-      {key: 'A', width: 11.25},
-      {key: 'B', width: 11.25},
-      {key: 'C', width: 11.25},
-      {key: 'D', width: 11.25},
-      {key: 'E', width: 15},
+      {key: 'A', width: 11.25}, {key: 'B', width: 11.25},
+      {key: 'C', width: 11.25}, {key: 'D', width: 11.25},
+      {key: 'E', width: 15},    {key: 'F', width: 11.25},
+      {key: 'G', width: 11.25}, {key: 'H', width: 11.25},
+      {key: 'I', width: 11.25}, {key: 'J', width: 11.25},
+      {key: 'K', width: 11.25}, {key: 'L', width: 11.25},
+      {key: 'M', width: 11.25}, {key: 'N', width: 11.25},
+      {key: 'O', width: 11.25}, {key: 'P', width: 11.25},
+      {key: 'Q', width: 11.25}, {key: 'R', width: 11.25},
+      {key: 'S', width: 11.25}, {key: 'T', width: 11.25},
+      {key: 'U', width: 11.25}, {key: 'V', width: 11.25},
+      {key: 'W', width: 11.25}, {key: 'X', width: 11.25},
+      {key: 'Y', width: 11.25}, {key: 'Z', width: 11.25},
+      {key: 'AA', width: 11.25}
     ];
+
 
     const rows = [
       ['第1笔借款明细表'],
@@ -271,6 +281,7 @@ async function generateExcelBuffer(groups = []) {
     const interestRowNumbers = [];
     const principalRowNumbers = [];
     const overdueInterestRowNumbers = [];
+    const lastPeriodRowNumbers = [];
 
     for (let i = 0; i < periods.length; i++) {
       const currentPeriod = periods[i];
@@ -483,7 +494,7 @@ async function generateExcelBuffer(groups = []) {
             throw new Error(`未知的 currentPayment.type: ${
                 currentPayment.type}，无法处理！`);
           }
-
+          lastPeriodRowNumbers.push(rowNumber);
           insertedRowNumbers.push(rowNumber);
 
           subIndex++;
@@ -521,6 +532,7 @@ async function generateExcelBuffer(groups = []) {
       currentRowIdx++;
     }
 
+    // 到期后
     if (isBeforeCurrent) {
       const row = worksheet.getRow(currentRowIdx);
 
@@ -541,7 +553,7 @@ async function generateExcelBuffer(groups = []) {
     console.log('利息子期行号:', interestRowNumbers);
     console.log('本金子期行号:', principalRowNumbers);
     console.log('逾期利息子期行号:', overdueInterestRowNumbers);
-    
+
     const firstRowIdx = startRow;
     const lastRowIdx = currentRowIdx - 1;
 
@@ -566,36 +578,42 @@ async function generateExcelBuffer(groups = []) {
     for (let rowIdx = startRow + 1; rowIdx <= lastRowIdx; rowIdx++) {
       const row = worksheet.getRow(rowIdx);
 
-      // 计算E列（D列 - C列的天数差）
-      const startDateCell = row.getCell(3).value;  // C列，开始日期
-      const endDateCell = row.getCell(4).value;    // D列，结束日期
-
-      let diffDays = null;
-
-      if (startDateCell && endDateCell) {
-        const startDate = dayjs(startDateCell);
-        const endDate = dayjs(endDateCell);
-
-        if (startDate.isValid() && endDate.isValid()) {
-          diffDays = endDate.diff(startDate, 'day');
-          row.getCell(5).value = diffDays;  // E列写入天数差
-        } else {
-          throw new Error(`无效日期 Row ${rowIdx}：start=${startDateCell} end=${
-              endDateCell}`);
-        }
-      } else {
-        throw new Error(`缺少日期 Row ${rowIdx}：start=${startDateCell} end=${
-            endDateCell}`);
-      }
+      // 设置 E 列（第 5 列）为公式：=（D列 - C列的天数差）
+      row.getCell(5).value = {formula: `D${rowIdx}-C${rowIdx}`};
 
       // 在B列写入公式 B(x) = B(x-1) - F(x)
       row.getCell(2).value = {formula: `B${rowIdx - 1}-F${rowIdx}`};
 
+      // 设置 M 列（第 13 列）的公式: M(x) = N(x) * O(x) / 360 * R(x)
+      row.getCell(13).value = {formula: `N${rowIdx}*O${rowIdx}/360*R${rowIdx}`};
+
       // O列写公式 = $E$6
       const oCell = row.getCell(15);  // O列是第15列
-      oCell.value = {formula: `$E$6`};
+      if (lastPeriodRowNumbers.includes(rowIdx)) {
+        oCell.value = {formula: `$E$7`};
+      } else {
+        oCell.value = {formula: `$E$6`};
+      }
+
+      // 使用 Excel 公式设置 R 列（第 18 列）：=Qx - Px
+      row.getCell(18).value = {formula: `Q${rowIdx}-P${rowIdx}`};
+
+      // 设置 Y 列（第 25 列）的公式：Y(x) = S(x) + M(x)
+      row.getCell(25).value = {formula: `S${rowIdx}+M${rowIdx}`};
+
+      // 设置 AA 列（第 27 列）的公式：AA(x) = Y(x) - Z(x)
+      row.getCell(27).value = {formula: `Y${rowIdx}-Z${rowIdx}`};
 
       row.commit();
+    }
+
+    // 单独处理最后一行
+    {
+      const lastRow = worksheet.getRow(lastRowIdx + 1);
+
+
+
+      lastRow.commit();
     }
 
 
@@ -635,13 +653,41 @@ async function generateExcelBuffer(groups = []) {
           formula: `N${rowIdx}*O${rowIdx}/360*R${rowIdx}`
         };
 
-        // N列加公式
-        if (interestRowNumbers.includes(rowIdx - 1)) {
-          // 特殊情况：x-1在i数组里
-          row.getCell(14).value = {formula: `N${rowIdx - 1}-J${rowIdx - 1}`};
+        const prevRow = rowIdx - 1;
+
+        // 设置第 14 列（N列）的公式
+        if (lastPeriodRowNumbers.includes(rowIdx)) {
+          row.getCell(14).value = {
+            formula: `L${prevRow}`  // 公式：N(x) = L(x-1)
+          };
+        } else if (
+            interestRowNumbers.includes(prevRow) &&
+            !originRowNumbers.includes(prevRow)) {
+          row.getCell(14).value = {
+            formula: `N${prevRow}-J${prevRow}`  // 公式：N(x) = N(x-1) - J(x-1)
+          };
         } else {
-          // 正常情况
-          row.getCell(14).value = {formula: `H${rowIdx - 1}-J${rowIdx - 1}`};
+          row.getCell(14).value = {
+            formula: `H${prevRow}-J${prevRow}`  // 公式：N(x) = H(x-1) - J(x-1)
+          };
+        }
+
+        // P列（第16列）和 Q列（第17列）
+        if (interestRowNumbers.includes(rowIdx) &&
+            !originRowNumbers.includes(rowIdx)) {
+          row.getCell(16).value = {
+            formula: `C${rowIdx}`  // P(x) = c(x)
+          };
+          row.getCell(17).value = {
+            formula: `D${rowIdx}`  // Q(x) = D(x)
+          };
+        } else {
+          row.getCell(16).value = {
+            formula: `C${rowIdx}`  // P(x) = c(x)
+          };
+          row.getCell(17).value = {
+            formula: `$E$10`  // Q(x) = E10
+          };
         }
 
         row.commit();
@@ -650,19 +696,39 @@ async function generateExcelBuffer(groups = []) {
 
     worksheet.eachRow((row, rowNumber) => {
       row.eachCell((cell, colNumber) => {
+        // 设置通用对齐样式
         cell.alignment = {
           vertical: 'middle',
           horizontal: 'center',
           wrapText: true
         };
+
+        // 设置百分比格式
         if ((rowNumber === 6 || rowNumber === 7) && colNumber === 5) {
           cell.numFmt = '0.00%';
         }
-        if (colNumber === 15) {
+
+        if (colNumber === 15 || colNumber === 21) {
           cell.numFmt = '0.00%';
         }
+
+        // 两位小数+千分号（行5，列5）
         if (rowNumber === 5 && colNumber === 5) {
           cell.numFmt = '#,##0.00';
+        }
+
+        // 两位小数+千分号（统一用 '#,##0.00'）：B, F, H, I, J, K, L, M, N, S,
+        // T, X, Y, Z, AA
+        const decimalColumns =
+            [2, 6, 8, 9, 10, 11, 12, 13, 14, 19, 20, 24, 25, 26, 27];
+        if (decimalColumns.includes(colNumber)) {
+          cell.numFmt = '#,##0.00';
+        }
+
+        // 设置日期格式的列：C, D, P, Q, V, W
+        const dateColumns = [3, 4, 16, 17, 22, 23];
+        if (dateColumns.includes(colNumber)) {
+          cell.numFmt = 'YYYY/MM/DD';
         }
       });
     });
