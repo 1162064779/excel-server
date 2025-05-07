@@ -161,9 +161,10 @@ async function generateExcelBuffer(groups = []) {
     const originRowNumbers = [];    // 记录初始 period 的真实行号
     const insertedRowNumbers = [];  // 记录插入子期的真实行号
 
-    let firstInterestEndDate;
+    let firstInterestEndDate = startDateParsed;
     // 确定读取 periods 的起始行
-    let periodsStartRow = intimeTerm > 0 ? startRow + 2 : startRow + 1;
+    let intimeTermOffset = intimeTerm > 0 ? 1 : 0;
+    let periodsStartRow = startRow + intimeTermOffset + 1;
     let periodsEndRow = -1;
 
     // 生成提前还款 (只生成一行)
@@ -204,7 +205,7 @@ async function generateExcelBuffer(groups = []) {
 
     // 生成剩余期数，从 intimeTerm+1 到 term
     for (let i = intimeTerm + 1; i <= term; i++) {
-      const rowIndex = startRow + (i - intimeTerm) + 1;
+      const rowIndex = startRow + (i - intimeTerm) + intimeTermOffset;
       const row = worksheet.getRow(rowIndex);
 
       // 期数列
@@ -285,7 +286,7 @@ async function generateExcelBuffer(groups = []) {
 
     for (let i = 0; i < periods.length; i++) {
       const currentPeriod = periods[i];
-      const nextPeriod = periods[i + 1];  // 可能没有，记得判断
+      const nextPeriod = periods[i + 1];
 
       console.log(`\n处理 period ${currentPeriod.period}: ${
           currentPeriod.start.format(
@@ -333,7 +334,7 @@ async function generateExcelBuffer(groups = []) {
               newPeriods.push(newPeriod);
 
               const lastNewPeriod = newPeriods[newPeriods.length - 1];
-              const rowNumber = startRow + 1 + newPeriods.length;
+              const rowNumber = startRow + intimeTermOffset + newPeriods.length;
 
               if (currentPayment.type === '利息') {
                 lastNewPeriod.interest = currentPayment.value;
@@ -381,7 +382,7 @@ async function generateExcelBuffer(groups = []) {
         end: currentPeriod.end,
       });
 
-      originRowNumbers.push(startRow + 1 + newPeriods.length);
+      originRowNumbers.push(startRow + intimeTermOffset + newPeriods.length);
 
       subIndex = 1;  // 子期编号，例如 (1)、(2)、(3) ...
 
@@ -402,13 +403,16 @@ async function generateExcelBuffer(groups = []) {
 
           if (currentPayment.type === '利息') {
             lastNewPeriod.interest = currentPayment.value;
-            interestRowNumbers.push(startRow + 1 + newPeriods.length);
+            interestRowNumbers.push(
+                startRow + intimeTermOffset + newPeriods.length);
           } else if (currentPayment.type === '本金') {
             lastNewPeriod.principal = currentPayment.value;
-            principalRowNumbers.push(startRow + 1 + newPeriods.length);
+            principalRowNumbers.push(
+                startRow + intimeTermOffset + newPeriods.length);
           } else if (currentPayment.type === '逾期利息') {
             lastNewPeriod.overdueInterest = currentPayment.value;
-            // overdueInterestRowNumbers.push(startRow + 1 + newPeriods.length);
+            // overdueInterestRowNumbers.push(startRow + intimeTermOffset +
+            // newPeriods.length);
           } else {
             throw new Error(`未知的 currentPayment.type: ${
                 currentPayment.type}，无法处理！`);
@@ -448,7 +452,7 @@ async function generateExcelBuffer(groups = []) {
               newPeriods.push(newPeriod);
 
               const lastNewPeriod = newPeriods[newPeriods.length - 1];
-              const rowNumber = startRow + 1 + newPeriods.length;
+              const rowNumber = startRow + intimeTermOffset + newPeriods.length;
 
               if (currentPayment.type === '利息') {
                 lastNewPeriod.interest = currentPayment.value;
@@ -498,7 +502,7 @@ async function generateExcelBuffer(groups = []) {
             newPeriods.push(newPeriod);
 
             const lastNewPeriod = newPeriods[newPeriods.length - 1];
-            const rowNumber = startRow + 1 + newPeriods.length;
+            const rowNumber = startRow + intimeTermOffset + newPeriods.length;
 
             if (currentPayment.type === '利息') {
               lastNewPeriod.interest = currentPayment.value;
@@ -525,11 +529,19 @@ async function generateExcelBuffer(groups = []) {
 
     // 重新写回 worksheet
     let currentRowIdx = periodsStartRow;
-    for (const newPeriod of newPeriods) {
+    for (let i = 0; i < newPeriods.length; i++) {
+      const newPeriod = newPeriods[i];
       const row = worksheet.getRow(currentRowIdx);
 
       row.getCell(1).value = newPeriod.period;
-      row.getCell(3).value = {formula: `D${currentRowIdx - 1}`};
+
+      if (intimeTerm === 0 && i === 0) {
+        // 第一个 newPeriod 且 intimeTerm 为 0，用 start 时间
+        row.getCell(3).value = newPeriod.start.format('YYYY/MM/DD');
+      } else {
+        // 默认使用上一行的 D 列作为公式
+        row.getCell(3).value = {formula: `D${currentRowIdx - 1}`};
+      }
       row.getCell(4).value = newPeriod.end.format('YYYY/MM/DD');
 
       if (newPeriod.principal !== undefined) {
@@ -671,9 +683,11 @@ async function generateExcelBuffer(groups = []) {
     if (repaymentType === 1) {  // 先息后本
 
       // 单独处理第一行
-      {
+      if (intimeTerm > 0) {
         const firstRow = worksheet.getRow(firstRowIdx + 1);
-        firstRow.getCell(10).value = {formula: `H${firstRowIdx + 1}`};
+        firstRow.getCell(10).value = {
+          formula: `H${firstRowIdx + 1}`
+        };  // 已还利息等于应还利息
         firstRow.commit();
       }
 
