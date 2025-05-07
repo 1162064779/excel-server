@@ -110,7 +110,7 @@ async function generateExcelBuffer(groups = []) {
 
     worksheet.insertRow(15, [
       '期数',
-      '期末本金余额',
+      '期初本金余额',
       '起息日',
       '截息日',
       '计息天数',
@@ -552,16 +552,16 @@ async function generateExcelBuffer(groups = []) {
       currentRowIdx++;
     }
 
-    // 到期后
+    // 开口部分
     if (isBeforeCurrent) {
       const currentRow = worksheet.getRow(currentRowIdx);
 
       // 设置行头与日期
-      currentRow.getCell(1).value = '到期后';
+      currentRow.getCell(1).value = '开口部分';
       currentRow.getCell(3).value = {formula: `D${currentRowIdx - 1}`};
       currentRow.getCell(4).value = currentDateParsed.format('YYYY/MM/DD');
 
-      console.log(`写入 Row ${currentRowIdx}：到期后，${
+      console.log(`写入 Row ${currentRowIdx}：开口部分，${
           endDateParsed.format(
               'YYYY/MM/DD')} ~ ${currentDateParsed.format('YYYY/MM/DD')}`);
 
@@ -639,8 +639,11 @@ async function generateExcelBuffer(groups = []) {
       // 设置 E 列（第 5 列）为公式：=（D列 - C列的天数差）
       row.getCell(5).value = {formula: `D${rowIdx}-C${rowIdx}`};
 
-      // 在B列写入公式 B(x) = B(x-1) - F(x)
-      row.getCell(2).value = {formula: `B${rowIdx - 1}-F${rowIdx}`};
+      // 在B列写入公式 B(x) = B(x-1) - F(x-1)
+      row.getCell(2).value = {formula: `B${rowIdx - 1}-F${rowIdx - 1}`};
+
+      // 设置 K 列：K(x) = K(x-1) + F(x) - I(x)
+      row.getCell(11).value = {formula: `K${rowIdx - 1}+F${rowIdx}-I${rowIdx}`};
 
       // 设置 M 列（第 13 列）的公式: M(x) = N(x) * O(x) / 360 * R(x)
       row.getCell(13).value = {formula: `N${rowIdx}*O${rowIdx}/360*R${rowIdx}`};
@@ -680,10 +683,9 @@ async function generateExcelBuffer(groups = []) {
 
         // 如果这一行是 originRowNumbers 中的
         if (originRowNumbers.includes(rowIdx)) {
-          // F、I、K列都设为0
-          row.getCell(6).value = 0;   // F列
-          row.getCell(9).value = 0;   // I列
-          row.getCell(11).value = 0;  // K列
+          // F、I都设为0
+          row.getCell(6).value = 0;  // F列
+          row.getCell(9).value = 0;  // I列
 
           // H列加公式
           row.getCell(8).value = {
@@ -733,9 +735,13 @@ async function generateExcelBuffer(groups = []) {
           row.getCell(16).value = {
             formula: `C${rowIdx}`  // P(x) = c(x)
           };
-          row.getCell(17).value = {
-            formula: `$E$10`  // Q(x) = E10
-          };
+          if (isBeforeCurrent) {
+            row.getCell(17).value = {
+              formula: `$E$10`  // Q(x) = E10
+            };
+          } else {
+            row.getCell(17).value = currentDateParsed.format('YYYY/MM/DD');
+          }
         }
 
         row.commit();
@@ -775,7 +781,7 @@ async function generateExcelBuffer(groups = []) {
         worksheet.spliceRows(insertRowIndex, 0, []);
 
         // 插入后修复公式
-        for (let rowIdx = startRow + 1; rowIdx <= currentRowIdx+1; rowIdx++) {
+        for (let rowIdx = startRow + 1; rowIdx <= currentRowIdx + 1; rowIdx++) {
           const row = worksheet.getRow(rowIdx);
 
           for (let colIdx = 1; colIdx <= row.cellCount; colIdx++) {
@@ -837,6 +843,18 @@ async function generateExcelBuffer(groups = []) {
 
     sumRow.getCell(1).value = '合计';
 
+    let sumIdx = currentRowIdx;
+    if (!isBeforeCurrent) {
+      sumIdx = currentRowIdx - 1;  // 没有最后一行开口部分
+      const lastRow = worksheet.getRow(sumIdx);
+      lastRow.getCell(2).value = {
+        // B = B-1 - F-1
+        formula: `B${sumIdx - 1}-F${sumIdx - 1}`
+      };
+      lastRow.getCell(6).value = {formula: `B${sumIdx - 1}`};  // F = B-1
+      lastRow.commit();
+    }
+
     // 需要求和的列
     const sumCols = [
       {letter: 'H', index: 8}, {letter: 'I', index: 9},
@@ -848,13 +866,13 @@ async function generateExcelBuffer(groups = []) {
     // 从startRow到currentRowIdx求和
     for (const {letter, index} of sumCols) {
       sumRow.getCell(index).value = {
-        formula: `SUM(${letter}${startRow}:${letter}${currentRowIdx})`
+        formula: `SUM(${letter}${startRow}:${letter}${sumIdx})`
       };
     }
 
     // K L的值从原来最后一行拿
-    sumRow.getCell(11).value = {formula: `K${currentRowIdx}`};
-    sumRow.getCell(12).value = {formula: `L${currentRowIdx}`};
+    sumRow.getCell(11).value = {formula: `K${sumIdx}`};
+    sumRow.getCell(12).value = {formula: `L${sumIdx}`};
 
     sumRow.commit();
 
