@@ -55,10 +55,10 @@ async function generateExcelBuffer(groups = []) {
       startDate,
       endDate,
       repayment,
-      repaymentType,
       interestDay,
       intimeTerm,
       currentDate,
+      repaymentType,
       paymentPairs
     } = group;
 
@@ -1087,6 +1087,7 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
         repayment,
         interestDay,
         intimeTerm,
+        currentDate,
         repaymentType,
         paymentPairs
       });
