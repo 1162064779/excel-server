@@ -539,8 +539,15 @@ async function generateExcelBuffer(groups = []) {
         // 第一个 newPeriod 且 intimeTerm 为 0，用 start 时间
         row.getCell(3).value = newPeriod.start.format('YYYY/MM/DD');
       } else {
-        // 默认使用上一行的 D 列作为公式
-        row.getCell(3).value = {formula: `D${currentRowIdx - 1}`};
+        if (insertedRowNumbers.includes(currentRowIdx)) {
+          row.getCell(3).value = {formula: `D${currentRowIdx - 1}`};
+        } else {
+          let prevRowIdx = currentRowIdx - 1;
+          while (insertedRowNumbers.includes(prevRowIdx) && prevRowIdx > 0) {
+            prevRowIdx--;
+          }
+          row.getCell(3).value = {formula: `D${prevRowIdx}`};
+        }
       }
       row.getCell(4).value = newPeriod.end.format('YYYY/MM/DD');
 
@@ -570,7 +577,14 @@ async function generateExcelBuffer(groups = []) {
 
       // 设置行头与日期
       currentRow.getCell(1).value = '开口部分';
-      currentRow.getCell(3).value = {formula: `D${currentRowIdx - 1}`};
+
+      // 找到上一行中不属于 insertedRowNumbers 的行号
+      let prevRowIdx = currentRowIdx - 1;
+      while (insertedRowNumbers.includes(prevRowIdx) && prevRowIdx > 0) {
+        prevRowIdx--;
+      }
+      // 设置公式引用该行的 D 列
+      currentRow.getCell(3).value = {formula: `D${prevRowIdx}`};
       currentRow.getCell(4).value = currentDateParsed.format('YYYY/MM/DD');
 
       console.log(`写入 Row ${currentRowIdx}：开口部分，${
@@ -600,7 +614,7 @@ async function generateExcelBuffer(groups = []) {
       };  // M = N * O / 360 * R
       currentRow.getCell(14).value = {formula: `L${rPrev}`};      // N = L-1
       currentRow.getCell(15).value = {formula: `$E$7`};           // O = E7
-      currentRow.getCell(16).value = {formula: `C${r}`};          // P = C
+      currentRow.getCell(16).value = {formula: `D${rPrev}`};      // P = D-1
       currentRow.getCell(17).value = {formula: `D${r}`};          // Q = D
       currentRow.getCell(18).value = {formula: `Q${r} - P${r}`};  // R = Q - P
       currentRow.getCell(19).value = {
@@ -735,20 +749,24 @@ async function generateExcelBuffer(groups = []) {
             formula: `H${prevRow}-J${prevRow}`  // 公式：N(x) = H(x-1) - J(x-1)
           };
         }
+        // P列（第16列）
+        if (rowIdx === startRow + 1) {
+          row.getCell(16).value = {
+            formula: `C${rowIdx}`  // P(x) = C(x)
+          };
+        } else {
+          row.getCell(16).value = {
+            formula: `D${rowIdx - 1}`  // P(x) = D(x-1)
+          };
+        }
 
-        // P列（第16列）和 Q列（第17列）
+        // Q列（第17列）
         if (interestRowNumbers.includes(rowIdx) &&
             !originRowNumbers.includes(rowIdx)) {
-          row.getCell(16).value = {
-            formula: `C${rowIdx}`  // P(x) = c(x)
-          };
           row.getCell(17).value = {
             formula: `D${rowIdx}`  // Q(x) = D(x)
           };
         } else {
-          row.getCell(16).value = {
-            formula: `C${rowIdx}`  // P(x) = c(x)
-          };
           if (isBeforeCurrent) {
             row.getCell(17).value = {
               formula: `$E$10`  // Q(x) = E10
