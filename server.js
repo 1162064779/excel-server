@@ -45,7 +45,7 @@ async function generateExcelBuffer(groups = []) {
   const workbook = new ExcelJS.Workbook();
 
   for (const group of groups) {
-    const {
+    let {
       sheetNumber,
       name,
       amount,
@@ -161,6 +161,13 @@ async function generateExcelBuffer(groups = []) {
     const originRowNumbers = [];    // 记录初始 period 的真实行号
     const insertedRowNumbers = [];  // 记录插入子期的真实行号
 
+    // 不是先息后本时，intime当作0来生成行
+    let realIntimeTerm = 0;
+    if (repaymentType != 1) {
+      realIntimeTerm = intimeTerm;
+      intimeTerm = 0;
+    }
+
     let firstInterestEndDate = startDateParsed;
     // 确定读取 periods 的起始行
     let intimeTermOffset = intimeTerm > 0 ? 1 : 0;
@@ -208,6 +215,8 @@ async function generateExcelBuffer(groups = []) {
       const rowIndex = startRow + (i - intimeTerm) + intimeTermOffset;
       const row = worksheet.getRow(rowIndex);
 
+      console.log(`\n 第 ${i} 期（Excel 第 ${rowIndex} 行）`);
+
       // 期数列
       row.getCell(1).value = i;
 
@@ -248,10 +257,13 @@ async function generateExcelBuffer(groups = []) {
         break;
       } else {
         row.getCell(4).value = nextEndDate.format('YYYY/MM/DD');
+        periodsEndRow = rowIndex;
       }
       row.commit();
     }
 
+    console.log(` periodsStartRow: ${periodsStartRow}, periodsEndRow: ${
+        periodsEndRow}`);
     // 读取 periods（已有）
     const periods = [];
     for (let i = periodsStartRow; i <= periodsEndRow; i++) {
@@ -264,6 +276,12 @@ async function generateExcelBuffer(groups = []) {
       };
       periods.push(period);
     }
+
+    console.log(' Periods:');
+    periods.forEach(p => {
+      console.log(`Row ${p.row}: ${p.period}, Start: ${
+          p.start.format('YYYY-MM-DD')}, End: ${p.end.format('YYYY-MM-DD')}`);
+    });
 
     // 排序 paymentPairs
     paymentPairs.sort(
@@ -392,7 +410,7 @@ async function generateExcelBuffer(groups = []) {
         const paymentDate = dayjs(currentPayment.date);
 
         // 处理还款日期和截止日相同的情况
-        if (paymentDate.isSame(currentPeriod.end, 'day')) {
+        if (paymentDate.isSame(newPeriods[newPeriods.length - 1].end, 'day')) {
           const lastNewPeriod = newPeriods[newPeriods.length - 1];
 
           if (!lastNewPeriod) {
@@ -599,7 +617,13 @@ async function generateExcelBuffer(groups = []) {
         formula: `B${rPrev} - F${r}`
       };  // B = B-1 - F
       currentRow.getCell(5).value = {formula: `D${r} - C${r}`};  // E = D - C
-      currentRow.getCell(6).value = {formula: `B${rPrev}`};      // F = B-1
+      if (repaymentType === 1) {
+        currentRow.getCell(6).value = {formula: `B${rPrev}`};  // F = B-1
+        currentRow.getCell(20).value = {formula: `F${r}`};     // T = F
+      } else if (repaymentType === 2) {
+        currentRow.getCell(6).value = 0;  // F = 0
+        currentRow.getCell(20).value = {formula: `K${r}`};     // T = K
+      }
       currentRow.getCell(8).value = {
         formula: `B${r} * $E$6 / 360 * E${r}`
       };  // H = B * E6 / 360 * E
@@ -620,7 +644,6 @@ async function generateExcelBuffer(groups = []) {
       currentRow.getCell(19).value = {
         formula: `T${r} * U${r} / 360 * X${r}`
       };  // S = T * U / 360 * X
-      currentRow.getCell(20).value = {formula: `F${r}`};          // T = F
       currentRow.getCell(21).value = {formula: `$E$7`};           // U = E7
       currentRow.getCell(22).value = {formula: `C${r}`};          // V = C
       currentRow.getCell(23).value = {formula: `D${r}`};          // W = D
@@ -644,14 +667,6 @@ async function generateExcelBuffer(groups = []) {
     // 单独处理第零行
     {
       const firstRow = worksheet.getRow(firstRowIdx);
-
-      // 读取 E5 的值
-      const e5Value = worksheet.getRow(5).getCell(5).value;
-
-      if (e5Value === undefined || e5Value === null) {
-        throw new Error(`E5单元格为空，无法赋值到第${firstRowIdx}行的B列`);
-      }
-
       // B列写公式 =E5
       firstRow.getCell(2).value = {formula: `$E$5`};
 
@@ -668,11 +683,65 @@ async function generateExcelBuffer(groups = []) {
       // 在B列写入公式 B(x) = B(x-1) - F(x-1)
       row.getCell(2).value = {formula: `B${rowIdx - 1}-F${rowIdx - 1}`};
 
+      // 如果这一行是 originRowNumbers 中的
+      if (originRowNumbers.includes(rowIdx)) {
+        // H列加公式
+        row.getCell(8).value = {formula: `B${rowIdx}*$E$6/360*E${rowIdx}`};
+      }
+
       // 设置 K 列：K(x) = K(x-1) + F(x) - I(x)
       row.getCell(11).value = {formula: `K${rowIdx - 1}+F${rowIdx}-I${rowIdx}`};
 
-      // 设置 M 列（第 13 列）的公式: M(x) = N(x) * O(x) / 360 * R(x)
+      // 给L列加公式：L(x) = L(x-1) + H(x) - J(x)
+      row.getCell(12).value = {formula: `L${rowIdx - 1}+H${rowIdx}-J${rowIdx}`};
+
+      // M列加公式：M(x) = N(x) * O(x) / 360 * R(x)
       row.getCell(13).value = {formula: `N${rowIdx}*O${rowIdx}/360*R${rowIdx}`};
+
+      const prevRow = rowIdx - 1;
+
+      // 设置第 14 列（N列）的公式
+      if (lastPeriodRowNumbers.includes(rowIdx)) {
+        row.getCell(14).value = {
+          formula: `L${prevRow}`  // 公式：N(x) = L(x-1)
+        };
+      } else if (
+          interestRowNumbers.includes(prevRow) &&
+          !originRowNumbers.includes(prevRow)) {
+        row.getCell(14).value = {
+          formula: `N${prevRow}-J${prevRow}`  // 公式：N(x) = N(x-1) - J(x-1)
+        };
+      } else {
+        row.getCell(14).value = {
+          formula: `H${prevRow}-J${prevRow}`  // 公式：N(x) = H(x-1) - J(x-1)
+        };
+      }
+      // P列（第16列）
+      if (rowIdx === startRow + 1) {
+        row.getCell(16).value = {
+          formula: `C${rowIdx}`  // P(x) = C(x)
+        };
+      } else {
+        row.getCell(16).value = {
+          formula: `D${rowIdx - 1}`  // P(x) = D(x-1)
+        };
+      }
+
+      // Q列（第17列）
+      if ((interestRowNumbers.includes(rowIdx)||principalRowNumbers.includes(rowIdx)) &&
+          !originRowNumbers.includes(rowIdx)) {
+        row.getCell(17).value = {
+          formula: `D${rowIdx}`  // Q(x) = D(x)
+        };
+      } else {
+        if (isBeforeCurrent) {
+          row.getCell(17).value = {
+            formula: `$E$10`  // Q(x) = E10
+          };
+        } else {
+          row.getCell(17).value = currentDateParsed.format('YYYY/MM/DD');
+        }
+      }
 
       // O列写公式 = $E$6
       const oCell = row.getCell(15);  // O列是第15列
@@ -714,69 +783,53 @@ async function generateExcelBuffer(groups = []) {
           // F、I都设为0
           row.getCell(6).value = 0;  // F列
           row.getCell(9).value = 0;  // I列
-
-          // H列加公式
-          row.getCell(8).value = {
-            formula: `B${rowIdx}*O${rowIdx}/360*E${rowIdx}`
-          };
-        }
-
-        // 给L列加公式：L(x) = L(x-1) + H(x) - J(x)
-        row.getCell(12).value = {
-          formula: `L${rowIdx - 1}+H${rowIdx}-J${rowIdx}`
-        };
-
-        // M列加公式：M(x) = N(x) * O(x) / 360 * R(x)
-        row.getCell(13).value = {
-          formula: `N${rowIdx}*O${rowIdx}/360*R${rowIdx}`
-        };
-
-        const prevRow = rowIdx - 1;
-
-        // 设置第 14 列（N列）的公式
-        if (lastPeriodRowNumbers.includes(rowIdx)) {
-          row.getCell(14).value = {
-            formula: `L${prevRow}`  // 公式：N(x) = L(x-1)
-          };
-        } else if (
-            interestRowNumbers.includes(prevRow) &&
-            !originRowNumbers.includes(prevRow)) {
-          row.getCell(14).value = {
-            formula: `N${prevRow}-J${prevRow}`  // 公式：N(x) = N(x-1) - J(x-1)
-          };
-        } else {
-          row.getCell(14).value = {
-            formula: `H${prevRow}-J${prevRow}`  // 公式：N(x) = H(x-1) - J(x-1)
-          };
-        }
-        // P列（第16列）
-        if (rowIdx === startRow + 1) {
-          row.getCell(16).value = {
-            formula: `C${rowIdx}`  // P(x) = C(x)
-          };
-        } else {
-          row.getCell(16).value = {
-            formula: `D${rowIdx - 1}`  // P(x) = D(x-1)
-          };
-        }
-
-        // Q列（第17列）
-        if (interestRowNumbers.includes(rowIdx) &&
-            !originRowNumbers.includes(rowIdx)) {
-          row.getCell(17).value = {
-            formula: `D${rowIdx}`  // Q(x) = D(x)
-          };
-        } else {
-          if (isBeforeCurrent) {
-            row.getCell(17).value = {
-              formula: `$E$10`  // Q(x) = E10
-            };
-          } else {
-            row.getCell(17).value = currentDateParsed.format('YYYY/MM/DD');
-          }
         }
 
         row.commit();
+      }
+    } else if (repaymentType === 2) {  // 等额本金
+      let originRowCounter = 0;        // 记录当前是 origin 中的第几个
+      for (let rowIdx = startRow + 1; rowIdx <= lastRowIdx; rowIdx++) {
+        const row = worksheet.getRow(rowIdx);
+
+        // 如果这一行是 originRowNumbers 中的
+        if (originRowNumbers.includes(rowIdx)) {
+          originRowCounter++;
+          // F列 = E5/E8
+          row.getCell(6).value = {formula: `$E$5/$E$8`};
+        }
+        if (originRowCounter <= realIntimeTerm) {
+          // 前 realIntimeTerm 个 origin 行：I列 ：i(x) = f(x)
+          row.getCell(9).value = {formula: `F${rowIdx}`};
+          // J列 = H{rowIdx} → j(x) = h(x)
+          row.getCell(10).value = {formula: `H${rowIdx}`};
+        } else {
+        }
+        if (lastPeriodRowNumbers.includes(rowIdx)) {
+          // 当到期后，当期未还本金会变成累计未还本金
+          row.getCell(20).value = {formula: `K${rowIdx - 1}`};
+        } else if (
+            principalRowNumbers.includes(rowIdx - 1) &&
+            !originRowNumbers.includes(rowIdx - 1)) {
+          // 上一行还了本金且上一行不是原始行的时候，T = T(x-1) - I(x-1)
+          row.getCell(20).value = {formula: `T${rowIdx - 1}-I${rowIdx - 1}`};
+        } else {
+          // T = F(x-1) - I(x-1)
+          row.getCell(20).value = {formula: `F${rowIdx - 1} - I${rowIdx - 1}`};
+        }
+
+        // U = $E$7
+        row.getCell(21).value = {formula: `$E$7`};
+        // S = T * U / 360 * X
+        row.getCell(19).value = {
+          formula: `T${rowIdx} * U${rowIdx} / 360 * X${rowIdx}`
+        };
+        // V = P(x)
+        row.getCell(22).value = {formula: `P${rowIdx}`};
+        // W = Q(x) ）
+        row.getCell(23).value = {formula: `Q${rowIdx}`};
+        // X = W - V
+        row.getCell(24).value = {formula: `W${rowIdx} - V${rowIdx}`};
       }
     }
 
@@ -1070,6 +1123,10 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
       let repaymentType = null;
       if (repayment.includes('每月付息')) {
         repaymentType = 1;
+      } else if (repayment.includes('等额本金')) {
+        repaymentType = 2;
+      } else if (repayment.includes('等额本息')) {
+        repaymentType = 3;
       } else {
         throw new Error(`第 ${
             groupIndex +
