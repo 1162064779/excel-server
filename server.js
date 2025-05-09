@@ -43,7 +43,7 @@ function generateExcelColumnNames(count) {
  */
 async function generateExcelBuffer(groups = []) {
   const workbook = new ExcelJS.Workbook();
-
+  const summarySheet = workbook.addWorksheet("总表");
   for (const group of groups) {
     let {
       sheetNumber,
@@ -621,8 +621,8 @@ async function generateExcelBuffer(groups = []) {
         currentRow.getCell(6).value = {formula: `B${rPrev}`};  // F = B-1
         currentRow.getCell(20).value = {formula: `F${r}`};     // T = F
       } else if (repaymentType === 2) {
-        currentRow.getCell(6).value = 0;  // F = 0
-        currentRow.getCell(20).value = {formula: `K${r}`};     // T = K
+        currentRow.getCell(6).value = 0;                    // F = 0
+        currentRow.getCell(20).value = {formula: `K${r}`};  // T = K
       }
       currentRow.getCell(8).value = {
         formula: `B${r} * $E$6 / 360 * E${r}`
@@ -683,12 +683,6 @@ async function generateExcelBuffer(groups = []) {
       // 在B列写入公式 B(x) = B(x-1) - F(x-1)
       row.getCell(2).value = {formula: `B${rowIdx - 1}-F${rowIdx - 1}`};
 
-      // 如果这一行是 originRowNumbers 中的
-      if (originRowNumbers.includes(rowIdx)) {
-        // H列加公式
-        row.getCell(8).value = {formula: `B${rowIdx}*$E$6/360*E${rowIdx}`};
-      }
-
       // 设置 K 列：K(x) = K(x-1) + F(x) - I(x)
       row.getCell(11).value = {formula: `K${rowIdx - 1}+F${rowIdx}-I${rowIdx}`};
 
@@ -706,7 +700,7 @@ async function generateExcelBuffer(groups = []) {
           formula: `L${prevRow}`  // 公式：N(x) = L(x-1)
         };
       } else if (
-          interestRowNumbers.includes(prevRow) &&
+          insertedRowNumbers.includes(prevRow) &&
           !originRowNumbers.includes(prevRow)) {
         row.getCell(14).value = {
           formula: `N${prevRow}-J${prevRow}`  // 公式：N(x) = N(x-1) - J(x-1)
@@ -728,7 +722,7 @@ async function generateExcelBuffer(groups = []) {
       }
 
       // Q列（第17列）
-      if ((interestRowNumbers.includes(rowIdx)||principalRowNumbers.includes(rowIdx)) &&
+      if (insertedRowNumbers.includes(rowIdx) &&
           !originRowNumbers.includes(rowIdx)) {
         row.getCell(17).value = {
           formula: `D${rowIdx}`  // Q(x) = D(x)
@@ -782,21 +776,36 @@ async function generateExcelBuffer(groups = []) {
         if (originRowNumbers.includes(rowIdx)) {
           // F、I都设为0
           row.getCell(6).value = 0;  // F列
+                                     // H列加公式
+          row.getCell(8).value = {formula: `B${rowIdx}*$E$6/360*E${rowIdx}`};
           row.getCell(9).value = 0;  // I列
         }
 
         row.commit();
       }
-    } else if (repaymentType === 2) {  // 等额本金
-      let originRowCounter = 0;        // 记录当前是 origin 中的第几个
+    } else {                     // 等额本金和等额本息
+      let originRowCounter = 0;  // 记录当前是 origin 中的第几个
       for (let rowIdx = startRow + 1; rowIdx <= lastRowIdx; rowIdx++) {
         const row = worksheet.getRow(rowIdx);
 
         // 如果这一行是 originRowNumbers 中的
         if (originRowNumbers.includes(rowIdx)) {
           originRowCounter++;
-          // F列 = E5/E8
-          row.getCell(6).value = {formula: `$E$5/$E$8`};
+          if (repaymentType === 2) {  // 等额本金
+            // F列 = E5/E8
+            row.getCell(6).value = {formula: `$E$5/$E$8`};
+            // H列加公式
+            row.getCell(8).value = {formula: `B${rowIdx}*$E$6/360*E${rowIdx}`};
+          } else if (repaymentType === 3) {  // 等额本息
+            // F列 = PPMT($E$6/12, A(rowIdx), $E$8, -$E$5, 0)
+            row.getCell(6).value = {
+              formula: `PPMT($E$6/12, A${rowIdx}, $E$8, -$E$5, 0)`
+            };
+            // H列 = IPMT($E$6/12, A(rowIdx), $E$8, -$E$5, 0)
+            row.getCell(8).value = {
+              formula: `IPMT($E$6/12, A${rowIdx}, $E$8, -$E$5, 0)`
+            };
+          }
         }
         if (originRowCounter <= realIntimeTerm) {
           // 前 realIntimeTerm 个 origin 行：I列 ：i(x) = f(x)
@@ -809,7 +818,7 @@ async function generateExcelBuffer(groups = []) {
           // 当到期后，当期未还本金会变成累计未还本金
           row.getCell(20).value = {formula: `K${rowIdx - 1}`};
         } else if (
-            principalRowNumbers.includes(rowIdx - 1) &&
+            insertedRowNumbers.includes(rowIdx - 1) &&
             !originRowNumbers.includes(rowIdx - 1)) {
           // 上一行还了本金且上一行不是原始行的时候，T = T(x-1) - I(x-1)
           row.getCell(20).value = {formula: `T${rowIdx - 1}-I${rowIdx - 1}`};
@@ -1121,7 +1130,7 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
       console.log(`第 ${groupIndex + 1} 组 还款方式解析后: ${repayment}`);
 
       let repaymentType = null;
-      if (repayment.includes('每月付息')) {
+      if (repayment.includes('先息后本')) {
         repaymentType = 1;
       } else if (repayment.includes('等额本金')) {
         repaymentType = 2;
@@ -1130,7 +1139,8 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
       } else {
         throw new Error(`第 ${
             groupIndex +
-            1} 组的还款方式必须为「每月付息」，但实际为：${repayment}`);
+            1} 组的还款方式必须为先息后本、等额本金、等额本息，但实际为：${
+            repayment}`);
       }
 
       const interestDay = parseInt(sheet.getCell(`${colAmount}11`).value) || 21;

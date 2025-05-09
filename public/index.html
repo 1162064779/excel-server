@@ -5,26 +5,51 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>借款明细生成器</title>
   <style>
+    :root {
+      --zh-text-gray: #4a4a4a;
+      --zh-green: #2e7d32;
+      --zh-green-dark: #205923;
+      --zh-purple: #6a1b9a;
+    }
+
     * {
       box-sizing: border-box;
     }
 
     body {
-      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(to right, #e0eafc, #cfdef3);
+      font-family: "微软雅黑", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(to right, #f0f2f5, #e4e8ec);
       min-height: 100vh;
       display: flex;
-      align-items: center;
+      flex-direction: column;
       justify-content: center;
+      align-items: center;
       margin: 0;
       padding: 1rem;
+      color: var(--zh-text-gray);
+    }
+
+    .logo-fixed {
+      position: fixed;
+      top: 1rem;
+      left: 1rem;
+      z-index: 1000;
+    }
+
+    .logo-fixed img {
+      height: 40px;
+      width: auto;
     }
 
     .container {
-      background: white;
+      background: 
+        linear-gradient(rgba(255,255,255,0.92), rgba(255,255,255,0.92)),
+        url("images/test.jpg");
+      background-size: cover;
+      background-position: center;
       padding: 2rem;
       border-radius: 12px;
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
       width: 100%;
       max-width: 480px;
       animation: fadeIn 0.4s ease-in-out;
@@ -37,29 +62,31 @@
 
     h2 {
       text-align: center;
-      color: #1e40af;
+      color: var(--zh-purple);
       margin-bottom: 1.5rem;
+      font-weight: bold;
     }
 
     label {
       font-weight: 600;
       display: block;
       margin-top: 1rem;
-      color: #374151;
+      color: var(--zh-text-gray);
     }
 
     input[type="text"],
     input[type="file"] {
       width: 100%;
       padding: 0.6rem 0.75rem;
-      border: 1px solid #d1d5db;
+      border: 1px solid var(--zh-text-gray);
       border-radius: 6px;
       margin-top: 0.5rem;
-      transition: border 0.2s ease;
+      transition: border-color 0.2s ease;
+      font-size: 1rem;
     }
 
     input:focus {
-      border-color: #2563eb;
+      border-color: var(--zh-purple);
       outline: none;
     }
 
@@ -67,7 +94,7 @@
       margin-top: 2rem;
       width: 100%;
       padding: 0.8rem;
-      background: #2563eb;
+      background: var(--zh-green);
       color: white;
       font-size: 1rem;
       font-weight: bold;
@@ -78,19 +105,40 @@
     }
 
     button:hover {
-      background: #1e3a8a;
+      background: var(--zh-green-dark);
     }
 
     .note {
       font-size: 0.85rem;
-      color: #6b7280;
+      color: #777;
       margin-top: 0.25rem;
+    }
+
+    .footer {
+      margin-top: 2rem;
+      text-align: center;
+      font-size: 0.75rem;
+      color: #999;
+    }
+    .highlight-green {
+      color: var(--zh-green);
+      font-weight: bold;
+    }
+
+    .highlight-purple {
+      color: var(--zh-purple);
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
+
+  <div class="logo-fixed">
+    <img src="images/logo.png" alt="至合律师事务所 Logo" />
+  </div>
+
   <div class="container">
-    <h2>生成借款明细表</h2>
+    <h2>生成借款明细表(律政精英沈律师特供版)</h2>
 
     <label for="currentDate">到期日</label>
     <input type="text" id="currentDate" placeholder="例如：2024/10/18" />
@@ -100,6 +148,10 @@
     <input type="file" id="excelFile" accept=".xlsx, .xls" />
 
     <button onclick="submitForm()">生成 Excel</button>
+  </div>
+
+  <div class="footer">
+    本项目仅供上海<span class="highlight-green">至</span><span class="highlight-purple">合</span>律师事务所内部使用，谢绝外传
   </div>
 
   <script>
