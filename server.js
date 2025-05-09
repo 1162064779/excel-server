@@ -43,10 +43,52 @@ function generateExcelColumnNames(count) {
  */
 async function generateExcelBuffer(groups = []) {
   const workbook = new ExcelJS.Workbook();
-  const summarySheet = workbook.addWorksheet("总表");
+
+  // 生成总表
+  const sumRowNumbers = [];  // 记录每个子表的总结行号
+  const summarySheet = workbook.addWorksheet('总表');
+  summarySheet.columns = [
+    {key: 'A', width: 11.25}, {key: 'B', width: 11.25},
+    {key: 'C', width: 11.25}, {key: 'D', width: 11.25},
+    {key: 'E', width: 11.25}, {key: 'F', width: 11.25},
+    {key: 'G', width: 11.25}, {key: 'H', width: 11.25},
+    {key: 'I', width: 11.25}, {key: 'J', width: 11.25},
+    {key: 'K', width: 11.25}, {key: 'L', width: 11.25},
+    {key: 'M', width: 11.25}, {key: 'N', width: 11.25},
+    {key: 'O', width: 11.25}, {key: 'P', width: 11.25},
+    {key: 'Q', width: 11.25}, {key: 'R', width: 11.25}
+  ];
+  // 插入标题行（a = name，b = currentDate）
+  const a = groups?.[0]?.name || '未知借款人';
+  const rawDate = groups?.[0]?.currentDate || '';
+  const rawDateStr = typeof rawDate === 'string' ?
+      rawDate :
+      dayjs(rawDate).format('YYYY/MM/DD');  // 如果是 Date 对象，用 dayjs 格式化
+  const b = formatChineseDate(rawDate);
+  const title = `【${a}】 借款计算表【总表】--暂计至${b}`;
+
+  // 添加第一行作为标题
+  summarySheet.addRow([title]);
+  summarySheet.mergeCells('A1', 'R1');
+  summarySheet.getCell('A1')
+      .font = {bold: true, size: 16, color: {argb: 'FF000000'}};
+  summarySheet.getCell('A1').alignment = {
+    vertical: 'middle',
+    horizontal: 'center'
+  };
+
+  summarySheet.addRow([
+    '笔数', '起息日期', '账单到期日', '提前到期日（开庭日）', '借期数',
+    '还款方式', '借款本金（元）', '年利率', '逾期利率', '已还本金（元）',
+    '应还利息（元）', '已还利息（元）', '已还逾期利息（元）', '未还本金（元）',
+    '未还利息（元）', '复利（以未还利息为基数）', '罚息（以未还本金为基数）',
+    '未还逾期利息'
+  ]);
+
+  // 生成n个子表
   for (const group of groups) {
     let {
-      sheetNumber,
+      sheetName,
       name,
       amount,
       rate,
@@ -62,7 +104,7 @@ async function generateExcelBuffer(groups = []) {
       paymentPairs
     } = group;
 
-    const worksheet = workbook.addWorksheet(`sheet${sheetNumber}`);
+    const worksheet = workbook.addWorksheet(sheetName);
 
     worksheet.columns = [
       {key: 'A', width: 11.25}, {key: 'B', width: 11.25},
@@ -969,7 +1011,7 @@ async function generateExcelBuffer(groups = []) {
     sumRow.getCell(12).value = {formula: `L${sumIdx}`};
 
     sumRow.commit();
-
+    sumRowNumbers.push(sumRowIndex);
     // 最后表格
     const displayStartRow = sumRowIndex + 1;
 
@@ -1049,6 +1091,169 @@ async function generateExcelBuffer(groups = []) {
       });
     });
   }
+
+  // 总表
+
+  const n = groups.length;
+  let startIdx = 3;
+  for (let i = 1; i <= n; i++) {
+    const rowIdx = i + startIdx - 1;
+    const row = summarySheet.getRow(rowIdx);
+    const sumIdx = sumRowNumbers[i - 1];
+
+    const sheetName = groups[i - 1].sheetName;
+
+    // 如果 sheetName 含有空格或中文，需加英文单引号
+    const quotedSheetName =
+        /[\s\u4e00-\u9fa5]/.test(sheetName) ? `'${sheetName}'` : sheetName;
+
+    // A列：序号
+    row.getCell(1).value = i;
+
+    // B列：引用子表 E9
+    row.getCell(2).value = {formula: `${quotedSheetName}!$E$9`};
+
+    // C列：引用子表 E10
+    row.getCell(3).value = {formula: `${quotedSheetName}!$E$10`};
+
+    // D列：比较 C列 和 rawDate
+    const cellC = `C${rowIdx}`;
+    row.getCell(4).value = {
+      formula: `IF(${cellC}>DATEVALUE("${rawDateStr}"), "加速到期", "正常到期")`
+    };
+
+    // E列：子表 E8
+    row.getCell(5).value = {formula: `${quotedSheetName}!$E$8`};
+    // F列：子表 E11
+    row.getCell(6).value = {formula: `${quotedSheetName}!$E$11`};
+    // G列：子表 E5
+    row.getCell(7).value = {formula: `${quotedSheetName}!$E$5`};
+    // H列：子表 E6
+    row.getCell(8).value = {formula: `${quotedSheetName}!$E$6`};
+    // I列：子表 E7
+    row.getCell(9).value = {formula: `${quotedSheetName}!$E$7`};
+    // J列（第10列）：子表 I列（第9列）第 sumIdx 行
+    row.getCell(10).value = {formula: `${quotedSheetName}!I${sumIdx}`};
+    // K列（第11列）：子表 H列（第8列）第 sumIdx 行
+    row.getCell(11).value = {formula: `${quotedSheetName}!H${sumIdx}`};
+    // L列（第12列）：子表 J列（第10列）第 sumIdx 行
+    row.getCell(12).value = {formula: `${quotedSheetName}!J${sumIdx}`};
+    // M列（第13列）：子表 Z列（第26列）第 sumIdx 行
+    row.getCell(13).value = {formula: `${quotedSheetName}!Z${sumIdx}`};
+    // N列（第14列）：子表 K列（第11列）第 sumIdx 行
+    row.getCell(14).value = {formula: `${quotedSheetName}!K${sumIdx}`};
+    // O列（第15列）：子表 L列（第12列）第 sumIdx 行
+    row.getCell(15).value = {formula: `${quotedSheetName}!L${sumIdx}`};
+    // P列（第16列）：子表 M列（第13列）第 sumIdx 行
+    row.getCell(16).value = {formula: `${quotedSheetName}!M${sumIdx}`};
+    // Q列（第17列）：子表 S列（第19列）第 sumIdx 行
+    row.getCell(17).value = {formula: `${quotedSheetName}!S${sumIdx}`};
+    // R列（第18列）：子表 AA列（第27列）第 sumIdx 行
+    row.getCell(18).value = {formula: `${quotedSheetName}!AA${sumIdx}`};
+
+    row.commit();
+  }
+
+  // 合计行索引
+  const ssumIdx = startIdx + n + 5;
+
+  // 获取合计行
+  const sumRow = summarySheet.getRow(ssumIdx);
+
+  // A列：写“合计”
+  sumRow.getCell(1).value = '合计';
+
+  // 要求和的列号
+  const sumCols = [7, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+
+  // 所有列中，用到的最大列号（用于加粗整行）
+  const allCols = [1, ...sumCols];
+
+  for (const col of allCols) {
+    const cell = sumRow.getCell(col);
+
+    // 如果是求和列，设置公式
+    if (col !== 1) {
+      const colLetter = getExcelColLetter(col);
+      cell.value = {
+        formula: `SUM(${colLetter}${startIdx}:${colLetter}${startIdx + n - 1})`
+      };
+    }
+
+    // 设置加粗字体
+    cell.font = {bold: true};
+  }
+
+  // 提交合计行
+  sumRow.commit();
+
+  // 第一步：构建分类 Map
+const rateGroups = new Map(); // Map<rate, rowIndices[]>
+
+for (let i = 0; i < n; i++) {
+  const rowIdx = startIdx + i;
+  const row = summarySheet.getRow(rowIdx);
+  const rate = row.getCell(9).value; // I列（第9列）
+
+  if (!rateGroups.has(rate)) {
+    rateGroups.set(rate, []);
+  }
+  rateGroups.get(rate).push(rowIdx);
+}
+
+// 第二步：遍历每个类别，计算 N+O 列求和
+let outputIdx = ssumIdx + 2;
+
+for (const [rate, rowIndices] of rateGroups.entries()) {
+  let total = 0;
+
+  for (const idx of rowIndices) {
+    const row = summarySheet.getRow(idx);
+    const valN = row.getCell(14).value || 0;
+    const valO = row.getCell(15).value || 0;
+
+    const numN = typeof valN === 'object' && valN.result !== undefined ? valN.result : Number(valN) || 0;
+    const numO = typeof valO === 'object' && valO.result !== undefined ? valO.result : Number(valO) || 0;
+
+    total += numN + numO;
+  }
+
+  // 第三步：写入合计行下方的描述文本
+  const outputRow = summarySheet.getRow(outputIdx++);
+  outputRow.getCell(1).value = `以未还本息${total}元为基数，按照年利率${rate}计算`;
+  outputRow.commit();
+}
+
+
+  // 设置总表格式
+  summarySheet.eachRow((row, rowNumber) => {
+    row.eachCell((cell, colNumber) => {
+      // 设置通用对齐样式（居中 + 自动换行）
+      cell.alignment = {
+        vertical: cell.alignment?.vertical || 'middle',
+        horizontal: cell.alignment?.horizontal || 'center',
+        wrapText: true
+      };
+
+      // 设置百分比格式：H、I（列号 8、9）
+      const percentColumns = [8, 9];
+      if (percentColumns.includes(colNumber)) {
+        cell.numFmt = '0.00%';
+      }
+
+      // 设置千分位 + 两位小数：G、J、K、L、M、N、O、P、Q、R
+      const decimalColumns = [7, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+      if (decimalColumns.includes(colNumber)) {
+        cell.numFmt = '#,##0.00';
+      }
+
+      // 设置日期格式：B、C（列号 2、3）
+      const dateColumns = [2, 3];
+      if (dateColumns.includes(colNumber)) {
+        cell.numFmt = 'yyyy/mm/dd';
+      }
+    });
+  });
 
   return await workbook.xlsx.writeBuffer();
 }
@@ -1175,7 +1380,7 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
 
       // ✅ 添加当前组数据
       groups.push({
-        sheetNumber: groupIndex + 1,
+        sheetName: `sheet${groups.length + 1}`,
         name,
         amount,
         rate,
@@ -1269,4 +1474,24 @@ function getNextOverdueLabel(prevValue) {
 
   // fallback: unknown format, return as is
   return `${str}(1)`;
+}
+
+function formatChineseDate(dateStr) {
+  if (!dateStr) return '未知日期';
+
+  const parts = dateStr.split(/[\/\-]/);  // 支持 "2025/2/10" 或 "2025-2-10"
+  if (parts.length !== 3) return '未知日期';
+
+  const [year, month, day] = parts;
+  return `${year}年${parseInt(month)}月${parseInt(day)}日`;
+}
+
+function getExcelColLetter(n) {
+  let s = '';
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
 }
