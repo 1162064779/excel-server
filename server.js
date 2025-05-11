@@ -43,6 +43,8 @@ function generateExcelColumnNames(count) {
  */
 async function generateExcelBuffer(groups = []) {
   const workbook = new ExcelJS.Workbook();
+  // 设置工作簿的全局计算模式为自动
+  workbook.calcProperties.fullCalcOnLoad = true; // ⚡关键设置
 
   // 生成总表
   const sumRowNumbers = [];  // 记录每个子表的总结行号
@@ -1187,42 +1189,110 @@ async function generateExcelBuffer(groups = []) {
   // 提交合计行
   sumRow.commit();
 
-  // 第一步：构建分类 Map
-const rateGroups = new Map(); // Map<rate, rowIndices[]>
+  // 第一步：构建分类 Map（保持不变）
+  const rateGroups = new Map();
 
-for (let i = 0; i < n; i++) {
-  const rowIdx = startIdx + i;
-  const row = summarySheet.getRow(rowIdx);
-  const rate = row.getCell(9).value; // I列（第9列）
+  for (let i = 0; i < n; i++) {
+    const rowIdx = startIdx + i;
+    const row = summarySheet.getRow(rowIdx);
+    if (!row) {
+      console.warn(`跳过不存在行: ${rowIdx}`);
+      continue;
+    }
 
-  if (!rateGroups.has(rate)) {
-    rateGroups.set(rate, []);
+    // 处理I列单元格
+    const cellI = row.getCell(9);
+    let actualValue;
+
+    if (cellI.value && typeof cellI.value === 'object' && cellI.value.formula) {
+      // 解析公式
+      const formula = cellI.value.formula;
+      const formulaMatch = formula.match(/^'?(.*?)'?!\$?([A-Z]+\$?\d+)$/);
+
+      if (formulaMatch) {
+        // 处理带转义的工作表名
+        const sheetName = formulaMatch[1].replace(/''/g, "'");
+        const cellAddress = formulaMatch[2].replace(/\$/g, '');
+
+        // 获取目标工作表
+        const targetSheet = workbook.getWorksheet(sheetName);
+        if (targetSheet) {
+          const targetCell = targetSheet.getCell(cellAddress);
+          actualValue = targetCell.value;
+
+          // 处理数值精度
+          if (typeof actualValue === 'number') {
+            actualValue = Number(actualValue.toFixed(4));
+          }
+        } else {
+          console.error(`工作表不存在: ${sheetName} (行 ${rowIdx})`);
+          actualValue = '无效引用';
+        }
+      } else {
+        console.error(`公式格式错误: ${formula} (行 ${rowIdx})`);
+        actualValue = '格式错误';
+      }
+    } else {
+      // 直接处理非公式值
+      actualValue = cellI.value;
+    }
+
+    // 处理空值
+    if (actualValue === null || actualValue === undefined) {
+      actualValue = '空值';
+    }
+
+    // 更新分组
+    const groupKey = typeof actualValue === 'number' 
+      ? actualValue 
+      : String(actualValue);
+
+    if (!rateGroups.has(groupKey)) {
+      rateGroups.set(groupKey, []);
+    }
+    rateGroups.get(groupKey).push(rowIdx);
+
+    // 调试日志
+    console.log(`行 ${rowIdx} 归类到:`, groupKey);
   }
-  rateGroups.get(rate).push(rowIdx);
-}
 
-// 第二步：遍历每个类别，计算 N+O 列求和
-let outputIdx = ssumIdx + 2;
-
-for (const [rate, rowIndices] of rateGroups.entries()) {
-  let total = 0;
-
-  for (const idx of rowIndices) {
-    const row = summarySheet.getRow(idx);
-    const valN = row.getCell(14).value || 0;
-    const valO = row.getCell(15).value || 0;
-
-    const numN = typeof valN === 'object' && valN.result !== undefined ? valN.result : Number(valN) || 0;
-    const numO = typeof valO === 'object' && valO.result !== undefined ? valO.result : Number(valO) || 0;
-
-    total += numN + numO;
+  // 打印最终分组结果
+  console.log('\n最终分组结果:');
+  for (const [key, rows] of rateGroups.entries()) {
+    console.log(`[${key}] => 行号: ${rows.join(', ')}`);
   }
 
-  // 第三步：写入合计行下方的描述文本
-  const outputRow = summarySheet.getRow(outputIdx++);
-  outputRow.getCell(1).value = `以未还本息${total}元为基数，按照年利率${rate}计算`;
-  outputRow.commit();
-}
+  // 第二步：生成公式并写入
+  let outputIdx = ssumIdx + 2;
+
+  for (const [rate, rowIndices] of rateGroups.entries()) {
+    // --- 错误处理：跳过空分组 ---
+    if (rowIndices.length === 0) {
+      continue; // ⚡ 跳过无行的分组
+    }
+
+    // --- 性能优化：使用 SUM 函数 ---
+    const formulaParts = [];
+    for (const idx of rowIndices) {
+      formulaParts.push(`N${idx}`, `O${idx}`); // 收集所有 N/O 列单元格
+    }
+    const sumFormula = `SUM(${formulaParts.join(',')})`; // 如 SUM(N1,O1,N3,O3)
+
+    // --- 获取利率单元格引用（取第一个行号） ---
+    const firstRowIdx = rowIndices[0];
+    const rateCell = `I${firstRowIdx}`; // 如 I1
+
+    // --- 构建完整的 Excel 公式 ---
+    const formulaText = 
+      `"以未还本息" & (${sumFormula}) & "元为基数，按照年利率" & ${rateCell} & "计算"`;
+
+    // --- 写入公式到 Excel ---
+    const outputRow = summarySheet.getRow(outputIdx++);
+    outputRow.getCell(1).value = { 
+      formula: `=${formulaText}` // ⚡ 必须以等号开头
+    };
+    outputRow.commit();
+  }
 
 
   // 设置总表格式
