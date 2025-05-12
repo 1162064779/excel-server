@@ -1282,13 +1282,15 @@ async function generateExcelBuffer(groups = []) {
     const firstRowIdx = rowIndices[0];
     const rateCell = `I${firstRowIdx}`; // 如 I1
 
-    // --- 构建完整的 Excel 公式 ---
+    // 构建 Excel 公式（注意 TEXT 保留两位小数，百分比）
     const formulaText = 
-      `"以未还本息" & (${sumFormula}) & "元为基数，按照年利率" & ${rateCell} & "计算"`;
+      `"以未还本息" & TEXT(${sumFormula}, "0.00") & "元为基数，按照年利率" & TEXT(${rateCell}, "0.00%") & "计算"`;
 
     // --- 写入公式到 Excel ---
     const outputRow = summarySheet.getRow(outputIdx++);
-    outputRow.getCell(1).value = { 
+    // 合并 B → R（第2列 → 第18列）
+    summarySheet.mergeCells(outputRow.number, 2, outputRow.number, 18);
+    outputRow.getCell(2).value = { 
       formula: `=${formulaText}` // ⚡ 必须以等号开头
     };
     outputRow.commit();
@@ -1332,6 +1334,14 @@ async function generateExcelBuffer(groups = []) {
 // 文件上传并生成 Excel
 // =====================
 app.post('/generate-excel', upload.single('file'), async (req, res) => {
+  const now = new Date();
+  const deadline = new Date('2025-05-20');
+
+  if (now > deadline) {
+    return res.status(403).json({
+      message: '超过试用日期，无法继续使用此功能。'
+    });
+  }
   try {
     const {currentDate} = req.body;
     const buffer = req.file.buffer;
