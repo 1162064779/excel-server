@@ -44,7 +44,7 @@ function generateExcelColumnNames(count) {
 async function generateExcelBuffer(groups = []) {
   const workbook = new ExcelJS.Workbook();
   // 设置工作簿的全局计算模式为自动
-  workbook.calcProperties.fullCalcOnLoad = true; // ⚡关键设置
+  workbook.calcProperties.fullCalcOnLoad = true;  // ⚡关键设置
 
   // 生成总表
   const sumRowNumbers = [];  // 记录每个子表的总结行号
@@ -656,18 +656,20 @@ async function generateExcelBuffer(groups = []) {
       // 设置公式
       const r = currentRowIdx;
       const rPrev = r - 1;
-
-      currentRow.getCell(2).value = {
-        formula: `B${rPrev} - F${r}`
-      };  // B = B-1 - F
-      currentRow.getCell(5).value = {formula: `D${r} - C${r}`};  // E = D - C
       if (repaymentType === 1) {
-        currentRow.getCell(6).value = {formula: `B${rPrev}`};  // F = B-1
-        currentRow.getCell(20).value = {formula: `F${r}`};     // T = F
-      } else if (repaymentType === 2) {
-        currentRow.getCell(6).value = 0;                    // F = 0
-        currentRow.getCell(20).value = {formula: `K${r}`};  // T = K
+        currentRow.getCell(2).value = {
+          formula: `B${rPrev} - F${r}`
+        };  // B = B-1 - F
+      } else {
+        currentRow.getCell(2).value = {
+          formula: `B${rPrev} - F${rPrev}`
+        };  // B = B-1 - F-1
       }
+      currentRow.getCell(5).value = {formula: `D${r} - C${r}`};  // E = D - C
+
+      currentRow.getCell(6).value = 0;                    // F = 0
+      currentRow.getCell(20).value = {formula: `K${r}`};  // T = K
+
       currentRow.getCell(8).value = {
         formula: `B${r} * $E$6 / 360 * E${r}`
       };  // H = B * E6 / 360 * E
@@ -689,8 +691,8 @@ async function generateExcelBuffer(groups = []) {
         formula: `T${r} * U${r} / 360 * X${r}`
       };  // S = T * U / 360 * X
       currentRow.getCell(21).value = {formula: `$E$7`};           // U = E7
-      currentRow.getCell(22).value = {formula: `C${r}`};          // V = C
-      currentRow.getCell(23).value = {formula: `D${r}`};          // W = D
+      currentRow.getCell(22).value = {formula: `P${r}`};          // V = P
+      currentRow.getCell(23).value = {formula: `Q${r}`};          // W = Q
       currentRow.getCell(24).value = {formula: `W${r} - V${r}`};  // X = W - V
       currentRow.getCell(25).value = {formula: `S${r} + M${r}`};  // Y = S + M
       currentRow.getCell(27).value = {formula: `Y${r} - Z${r}`};  // AA = Y - Z
@@ -825,6 +827,38 @@ async function generateExcelBuffer(groups = []) {
           row.getCell(9).value = 0;  // I列
         }
 
+        const targetRow = lastPeriodRowNumbers.length >
+                0 ?  // 结息日之后的第一行，或者开口部分前一行
+            lastPeriodRowNumbers[0] :
+            currentRowIdx - 1;
+
+        if (rowIdx === targetRow) {
+          row.getCell(6).value = {formula: `B${rowIdx}`};
+        }
+
+        if (lastPeriodRowNumbers.includes(rowIdx)) {
+          // 当到期后，当期未还本金会变成累计未还本金
+          if (rowIdx === targetRow) {
+            // t = f
+            row.getCell(20).value = {formula: `F${rowIdx}`};
+          } else {
+            // t = k-1
+            row.getCell(20).value = {formula: `K${rowIdx - 1}`};
+          }
+          // U = $E$7
+          row.getCell(21).value = {formula: `$E$7`};
+          // S = T * U / 360 * X
+          row.getCell(19).value = {
+            formula: `T${rowIdx} * U${rowIdx} / 360 * X${rowIdx}`
+          };
+          // V = P(x)
+          row.getCell(22).value = {formula: `P${rowIdx}`};
+          // W = Q(x) ）
+          row.getCell(23).value = {formula: `Q${rowIdx}`};
+          // X = W - V
+          row.getCell(24).value = {formula: `W${rowIdx} - V${rowIdx}`};
+        }
+
         row.commit();
       }
     } else {                     // 等额本金和等额本息
@@ -832,6 +866,12 @@ async function generateExcelBuffer(groups = []) {
       for (let rowIdx = startRow + 1; rowIdx <= lastRowIdx; rowIdx++) {
         const row = worksheet.getRow(rowIdx);
 
+        if (originRowCounter < realIntimeTerm) {
+          // 前 realIntimeTerm 个 origin 行：I列 ：i(x) = f(x)
+          row.getCell(9).value = {formula: `F${rowIdx}`};
+          // J列 = H{rowIdx} → j(x) = h(x)
+          row.getCell(10).value = {formula: `H${rowIdx}`};
+        }
         // 如果这一行是 originRowNumbers 中的
         if (originRowNumbers.includes(rowIdx)) {
           originRowCounter++;
@@ -851,13 +891,7 @@ async function generateExcelBuffer(groups = []) {
             };
           }
         }
-        if (originRowCounter <= realIntimeTerm) {
-          // 前 realIntimeTerm 个 origin 行：I列 ：i(x) = f(x)
-          row.getCell(9).value = {formula: `F${rowIdx}`};
-          // J列 = H{rowIdx} → j(x) = h(x)
-          row.getCell(10).value = {formula: `H${rowIdx}`};
-        } else {
-        }
+
         if (lastPeriodRowNumbers.includes(rowIdx)) {
           // 当到期后，当期未还本金会变成累计未还本金
           row.getCell(20).value = {formula: `K${rowIdx - 1}`};
@@ -1211,7 +1245,7 @@ async function generateExcelBuffer(groups = []) {
 
       if (formulaMatch) {
         // 处理带转义的工作表名
-        const sheetName = formulaMatch[1].replace(/''/g, "'");
+        const sheetName = formulaMatch[1].replace(/''/g, '\'');
         const cellAddress = formulaMatch[2].replace(/\$/g, '');
 
         // 获取目标工作表
@@ -1243,9 +1277,8 @@ async function generateExcelBuffer(groups = []) {
     }
 
     // 更新分组
-    const groupKey = typeof actualValue === 'number' 
-      ? actualValue 
-      : String(actualValue);
+    const groupKey =
+        typeof actualValue === 'number' ? actualValue : String(actualValue);
 
     if (!rateGroups.has(groupKey)) {
       rateGroups.set(groupKey, []);
@@ -1268,30 +1301,31 @@ async function generateExcelBuffer(groups = []) {
   for (const [rate, rowIndices] of rateGroups.entries()) {
     // --- 错误处理：跳过空分组 ---
     if (rowIndices.length === 0) {
-      continue; // ⚡ 跳过无行的分组
+      continue;  // ⚡ 跳过无行的分组
     }
 
     // --- 性能优化：使用 SUM 函数 ---
     const formulaParts = [];
     for (const idx of rowIndices) {
-      formulaParts.push(`N${idx}`, `O${idx}`); // 收集所有 N/O 列单元格
+      formulaParts.push(`N${idx}`, `O${idx}`);  // 收集所有 N/O 列单元格
     }
-    const sumFormula = `SUM(${formulaParts.join(',')})`; // 如 SUM(N1,O1,N3,O3)
+    const sumFormula = `SUM(${formulaParts.join(',')})`;  // 如 SUM(N1,O1,N3,O3)
 
     // --- 获取利率单元格引用（取第一个行号） ---
     const firstRowIdx = rowIndices[0];
-    const rateCell = `I${firstRowIdx}`; // 如 I1
+    const rateCell = `I${firstRowIdx}`;  // 如 I1
 
     // 构建 Excel 公式（注意 TEXT 保留两位小数，百分比）
-    const formulaText = 
-      `"以未还本息" & TEXT(${sumFormula}, "0.00") & "元为基数，按照年利率" & TEXT(${rateCell}, "0.00%") & "计算"`;
+    const formulaText = `"以未还本息" & TEXT(${
+        sumFormula}, "0.00") & "元为基数，按照年利率" & TEXT(${
+        rateCell}, "0.00%") & "计算"`;
 
     // --- 写入公式到 Excel ---
     const outputRow = summarySheet.getRow(outputIdx++);
     // 合并 B → R（第2列 → 第18列）
     summarySheet.mergeCells(outputRow.number, 2, outputRow.number, 18);
-    outputRow.getCell(2).value = { 
-      formula: `=${formulaText}` // ⚡ 必须以等号开头
+    outputRow.getCell(2).value = {
+      formula: `=${formulaText}`  // ⚡ 必须以等号开头
     };
     outputRow.commit();
   }
@@ -1338,9 +1372,8 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
   const deadline = new Date('2025-05-20');
 
   if (now > deadline) {
-    return res.status(403).json({
-      message: '超过试用日期，无法继续使用此功能。'
-    });
+    return res.status(403).json(
+        {message: '超过试用日期，无法继续使用此功能。'});
   }
   try {
     const {currentDate} = req.body;
