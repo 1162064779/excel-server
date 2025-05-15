@@ -1361,7 +1361,9 @@ async function generateExcelBuffer(groups = []) {
     });
   });
 
-  return await workbook.xlsx.writeBuffer();
+  const excelbuffer = await workbook.xlsx.writeBuffer();
+  const bufferName = `${a}截止${b}`;
+  return {excelbuffer, bufferName};
 }
 
 // =====================
@@ -1510,21 +1512,15 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
       });
     }
 
-    const outputBuffer = await generateExcelBuffer(groups);
+    const {excelbuffer, bufferName} = await generateExcelBuffer(groups);
 
-    const fileName = '借款明细.xlsx';
-    res.setHeader(
-        'Content-Type',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    // 将文件内容转成 base64 字符串
+    const base64 = excelbuffer.toString('base64');
 
-    // 设置 Content-Disposition，兼容大部分浏览器，包括中文文件名
-    res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="${
-            encodeURIComponent(
-                fileName)}"; filename*=UTF-8''${encodeURIComponent(fileName)}`);
-
-    res.send(outputBuffer);
+    res.json({
+      buffer: base64,
+      bufferName: bufferName + '.xlsx',  // 加上扩展名
+    });
   } catch (err) {
     console.error('生成失败:', err);
     res.status(500).send(`生成失败: ${err.message}`);

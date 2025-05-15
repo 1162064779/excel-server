@@ -199,18 +199,28 @@
           return;
         }
 
-        const blob = await res.blob();
+        const { buffer, bufferName } = await res.json();
+
+        // 将 base64 转成字节数组
+        const byteCharacters = atob(buffer);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        });
+
+        // 下载
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = '借款明细表.xlsx';
+        a.download = bufferName || '借款明细表.xlsx'; // 使用后端提供的文件名
         document.body.appendChild(a);
         a.click();
         a.remove();
         window.URL.revokeObjectURL(url);
-      })
-      .catch(() => {
-        alert('请求失败，请检查网络或稍后重试。');
       });
     }
   </script>
