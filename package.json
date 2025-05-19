@@ -29,6 +29,8 @@
   },
   "homepage": "https://github.com/1162064779/excel-server#readme",
   "dependencies": {
+    "electron": "^36.2.1",
+    "electron-packager": "^17.1.2",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "jszip": "^3.10.1",
