@@ -1372,7 +1372,7 @@ async function generateExcelBuffer(groups = []) {
 // =====================
 app.post('/generate-excel', upload.single('file'), async (req, res) => {
   const now = new Date();
-  const deadline = new Date('2025-05-20');
+  const deadline = new Date('2025-05-30');
 
   if (now > deadline) {
     return res.status(403).json(
