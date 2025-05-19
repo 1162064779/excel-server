@@ -144,10 +144,13 @@
     <input type="text" id="currentDate" placeholder="例如：2024/10/18" />
     <div class="note">默认填入今天日期（YYYY/M/D）</div>
 
-    <label for="excelFile">上传原始 Excel 文件</label>
-    <input type="file" id="excelFile" accept=".xlsx, .xls" />
+    <label for="excelFile">上传单个 Excel 文件</label>
+    <input type="file" id="excelFile" accept=".xlsx,.xls" />
 
-    <button onclick="submitForm()">生成 Excel</button>
+    <label for="excelFolder">上传包含多个 Excel 的文件夹（优先使用）</label>
+    <input type="file" id="excelFolder" webkitdirectory multiple accept=".xlsx,.xls" />
+
+    <button onclick="handleSubmit()">生成 Excel</button>
   </div>
 
   <div class="footer">
@@ -163,7 +166,7 @@
       input.value = formatted;
     });
 
-    function submitForm() {
+    function handleSubmit() {
       const currentDateInput = document.getElementById('currentDate');
       let currentDate = currentDateInput.value.trim();
 
@@ -172,56 +175,90 @@
         currentDate = `${today.getFullYear()}/${today.getMonth() + 1}/${today.getDate()}`;
       }
 
-      const fileInput = document.getElementById('excelFile');
-      const file = fileInput.files[0];
+      const folderInput = document.getElementById('excelFolder');
+      const folderFiles = folderInput.files;
 
-      if (!file) {
-        alert('请上传 Excel 文件');
-        return;
-      }
+      const singleFileInput = document.getElementById('excelFile');
+      const singleFile = singleFileInput.files[0];
 
       const formData = new FormData();
-      formData.append('file', file);
       formData.append('currentDate', currentDate);
 
-      fetch('/generate-excel', {
-        method: 'POST',
-        body: formData
-      })
-      .then(async res => {
-        if (!res.ok) {
-          try {
-            const err = await res.json();
-            alert(err.message || '生成失败');
-          } catch {
-            alert('生成失败，服务器返回错误');
+      if (folderFiles && folderFiles.length > 0) {
+        // 优先处理文件夹上传
+        for (let i = 0; i < folderFiles.length; i++) {
+          formData.append('files', folderFiles[i]);
+        }
+
+        fetch('/generate-excel-zip', {
+          method: 'POST',
+          body: formData
+        })
+        .then(async res => {
+          if (!res.ok) {
+            try {
+              const err = await res.json();
+              alert(err.message || '批量生成失败');
+            } catch {
+              alert('生成失败，服务器错误');
+            }
+            return;
           }
-          return;
-        }
 
-        const { buffer, bufferName } = await res.json();
-
-        // 将 base64 转成字节数组
-        const byteCharacters = atob(buffer);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], {
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          const blob = await res.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = '借款明细打包.zip';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
         });
 
-        // 下载
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = bufferName || '借款明细表.xlsx'; // 使用后端提供的文件名
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-      });
+      } else if (singleFile) {
+        // 单文件上传
+        formData.append('file', singleFile);
+
+        fetch('/generate-excel', {
+          method: 'POST',
+          body: formData
+        })
+        .then(async res => {
+          if (!res.ok) {
+            try {
+              const err = await res.json();
+              alert(err.message || '生成失败');
+            } catch {
+              alert('生成失败，服务器错误');
+            }
+            return;
+          }
+
+          const { buffer, bufferName } = await res.json();
+          const byteCharacters = atob(buffer);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], {
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          });
+
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = bufferName || '借款明细表.xlsx';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
+        });
+
+      } else {
+        alert('请上传 Excel 文件 或 文件夹');
+      }
     }
   </script>
 </body>

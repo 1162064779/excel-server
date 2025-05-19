@@ -6,6 +6,7 @@ const {exec} = require('child_process');
 const os = require('os');
 const dayjs = require('dayjs');
 const customParseFormat = require('dayjs/plugin/customParseFormat');
+const JSZip = require('jszip');
 dayjs.extend(customParseFormat);
 
 const upload = multer();
@@ -1524,6 +1525,136 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
   } catch (err) {
     console.error('生成失败:', err);
     res.status(500).send(`生成失败: ${err.message}`);
+  }
+});
+
+app.post('/generate-excel-zip', upload.any(), async (req, res) => {
+  const now = new Date();
+  const deadline = new Date('2025-05-20');
+
+  if (now > deadline) {
+    return res.status(403).json(
+        {message: '超过试用日期，无法继续使用此功能。'});
+  }
+
+  try {
+    const currentDate = req.body.currentDate;
+    const files = req.files;
+
+    if (!files || files.length === 0) {
+      return res.status(400).json({message: '未上传任何文件'});
+    }
+
+    const zip = new JSZip();
+
+    for (const file of files) {
+      try {
+        const buffer = file.buffer;
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buffer);
+        const sheet = workbook.worksheets[0];
+        const name = sheet.getCell('B1').value || '';
+
+        const groups = [];
+        const maxGroups = 30;
+        const allColumns = generateExcelColumnNames(maxGroups * 4);
+
+        for (let groupIndex = 0; groupIndex < maxGroups; groupIndex++) {
+          const baseIdx = 3 + groupIndex * 4;
+          const colDate = allColumns[baseIdx];
+          const colAmount = allColumns[baseIdx + 1];
+          const colType = allColumns[baseIdx + 2];
+
+          const amount = parseFloat(sheet.getCell(`${colAmount}4`).value) || 0;
+          if (!amount) break;
+
+          const rate =
+              parseFloat(sheet.getCell(`${colAmount}5`).value) * 100 || 0;
+          const lateRate =
+              parseFloat(sheet.getCell(`${colAmount}6`).value) * 100 || 0;
+          const term = parseInt(sheet.getCell(`${colAmount}7`).value) || 0;
+          const startDate = sheet.getCell(`${colAmount}8`).value || '';
+          const endDate = sheet.getCell(`${colAmount}9`).value || '';
+          const repaymentCell = sheet.getCell(`${colAmount}10`).value || '';
+
+          const repayment =
+              (typeof repaymentCell === 'object' && repaymentCell.richText) ?
+              repaymentCell.richText.map(part => part.text).join('').trim() :
+              String(repaymentCell || '').trim();
+
+          let repaymentType = null;
+          if (repayment.includes('先息后本')) {
+            repaymentType = 1;
+          } else if (repayment.includes('等额本金')) {
+            repaymentType = 2;
+          } else if (repayment.includes('等额本息')) {
+            repaymentType = 3;
+          } else {
+            throw new Error(
+                `第 ${groupIndex + 1} 组还款方式不正确：${repayment}`);
+          }
+
+          const interestDay =
+              parseInt(sheet.getCell(`${colAmount}11`).value) || 21;
+          const intimeTerm =
+              parseInt(sheet.getCell(`${colAmount}12`).value) || 0;
+
+          const paymentPairs = [];
+          let row = 13;
+          while (true) {
+            const dateCell = sheet.getCell(`${colDate}${row}`).value;
+            const valueCell = sheet.getCell(`${colAmount}${row}`).value;
+            const typeCell = sheet.getCell(`${colType}${row}`).value;
+
+            if (valueCell == null || valueCell === '') break;
+
+            paymentPairs.push({
+              date: dateCell,
+              value: parseFloat(valueCell),
+              type: (typeCell || '').toString().trim()
+            });
+
+            row++;
+          }
+
+          groups.push({
+            sheetName: `sheet${groups.length + 1}`,
+            name,
+            amount,
+            rate,
+            lateRate,
+            term,
+            startDate,
+            endDate,
+            repayment,
+            interestDay,
+            intimeTerm,
+            currentDate,
+            repaymentType,
+            paymentPairs
+          });
+        }
+
+        const {excelbuffer, bufferName} = await generateExcelBuffer(groups);
+        zip.file(bufferName + '.xlsx', excelbuffer);
+
+      } catch (err) {
+        console.error(`处理文件 ${file.originalname} 出错:`, err.message);
+        // 可以继续处理其他文件，不中断整个流程
+      }
+    }
+
+    const zipBuffer = await zip.generateAsync({type: 'nodebuffer'});
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="download.zip"; filename*=UTF-8''${
+            encodeURIComponent('借款明细打包.zip')}`);
+    res.send(zipBuffer);
+
+  } catch (err) {
+    console.error('批量生成失败:', err);
+    res.status(500).json({message: `批量生成失败: ${err.message}`});
   }
 });
 
