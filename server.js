@@ -91,6 +91,7 @@ async function generateExcelBuffer(groups = []) {
   // 生成n个子表
   for (const group of groups) {
     let {
+      sheetNum,
       sheetName,
       name,
       amount,
@@ -110,7 +111,7 @@ async function generateExcelBuffer(groups = []) {
     const worksheet = workbook.addWorksheet(sheetName);
 
     worksheet.columns = [
-      {key: 'A', width: 11.25}, {key: 'B', width: 11.25},
+      {key: 'A', width: 15}, {key: 'B', width: 11.25},
       {key: 'C', width: 11.25}, {key: 'D', width: 11.25},
       {key: 'E', width: 15},    {key: 'F', width: 11.25},
       {key: 'G', width: 11.25}, {key: 'H', width: 11.25},
@@ -128,7 +129,7 @@ async function generateExcelBuffer(groups = []) {
 
 
     const rows = [
-      ['第1笔借款明细表'],
+      [`第${sheetNum}笔借款明细表`],
       ['要素表'],
       ['基本要素', '', '', '', '借款情况'],
       ['借款人姓名', '', '', '', name],
@@ -634,12 +635,12 @@ async function generateExcelBuffer(groups = []) {
       currentRowIdx++;
     }
 
-    // 开口部分
+    // 最后一笔还款后
     if (isBeforeCurrent) {
       const currentRow = worksheet.getRow(currentRowIdx);
 
       // 设置行头与日期
-      currentRow.getCell(1).value = '开口部分';
+      currentRow.getCell(1).value = '最后一笔还款后';
 
       // 找到上一行中不属于 insertedRowNumbers 的行号
       let prevRowIdx = currentRowIdx - 1;
@@ -650,25 +651,21 @@ async function generateExcelBuffer(groups = []) {
       currentRow.getCell(3).value = {formula: `D${prevRowIdx}`};
       currentRow.getCell(4).value = currentDateParsed.format('YYYY/MM/DD');
 
-      console.log(`写入 Row ${currentRowIdx}：开口部分，${
+      console.log(`写入 Row ${currentRowIdx}：最后一笔还款后，${
           endDateParsed.format(
               'YYYY/MM/DD')} ~ ${currentDateParsed.format('YYYY/MM/DD')}`);
 
       // 设置公式
       const r = currentRowIdx;
       const rPrev = r - 1;
-      if (repaymentType === 1) {
-        currentRow.getCell(2).value = {
-          formula: `B${rPrev} - F${r}`
-        };  // B = B-1 - F
-      } else {
-        currentRow.getCell(2).value = {
-          formula: `B${rPrev} - F${rPrev}`
-        };  // B = B-1 - F-1
-      }
+
+      currentRow.getCell(2).value = {
+        formula: `B${rPrev} - F${rPrev}`
+      };  // B = B-1 - F-1
+
       currentRow.getCell(5).value = {formula: `D${r} - C${r}`};  // E = D - C
 
-      currentRow.getCell(6).value = 0;                    // F = 0
+      currentRow.getCell(6).value = {formula: `B${r}`};   // F = B
       currentRow.getCell(20).value = {formula: `K${r}`};  // T = K
 
       currentRow.getCell(8).value = {
@@ -829,7 +826,7 @@ async function generateExcelBuffer(groups = []) {
         }
 
         const targetRow = lastPeriodRowNumbers.length >
-                0 ?  // 结息日之后的第一行，或者开口部分前一行
+                0 ?  // 结息日之后的第一行，或者最后一笔还款后前一行
             lastPeriodRowNumbers[0] :
             currentRowIdx - 1;
 
@@ -1010,6 +1007,28 @@ async function generateExcelBuffer(groups = []) {
       }
     }
 
+    // 给到期后的还款项改名
+    const matchedRows = [];
+
+    for (let rowIdx = startRow; rowIdx <= currentRowIdx; rowIdx++) {
+      const row = worksheet.getRow(rowIdx);
+      const cellValue = row.getCell(1).value;  // A列 = 第1列
+
+      if (typeof cellValue === 'string') {
+        const regex = new RegExp(`^${term}\\(\\d+\\)$`);
+
+        if (regex.test(cellValue.trim())) {
+          matchedRows.push(rowIdx);
+        }
+      }
+    }
+
+    // 替换为 到期后还款1、2、3...
+    matchedRows.forEach((rowIdx, index) => {
+      const row = worksheet.getRow(rowIdx);
+      row.getCell(1).value = `到期后还款${index + 1}`;
+      row.commit();  // 提交修改
+    });
     // sum行
     const sumRowIndex = currentRowIdx + 10;
     const sumRow = worksheet.getRow(sumRowIndex);
@@ -1018,13 +1037,13 @@ async function generateExcelBuffer(groups = []) {
 
     let sumIdx = currentRowIdx;
     if (!isBeforeCurrent) {
-      sumIdx = currentRowIdx - 1;  // 没有最后一行开口部分
+      sumIdx = currentRowIdx - 1;  // 没有最后一行最后一笔还款后
       const lastRow = worksheet.getRow(sumIdx);
       lastRow.getCell(2).value = {
         // B = B-1 - F-1
         formula: `B${sumIdx - 1}-F${sumIdx - 1}`
       };
-      lastRow.getCell(6).value = {formula: `B${sumIdx - 1}`};  // F = B-1
+      lastRow.getCell(6).value = {formula: `B${sumIdx}`};  // F = B
       lastRow.commit();
     }
 
@@ -1097,6 +1116,13 @@ async function generateExcelBuffer(groups = []) {
           horizontal: cell.alignment?.horizontal || 'center',
           wrapText: true
         };
+
+        // cell.border = {
+        //   top: {style: 'thick'},
+        //   left: {style: 'thick'},
+        //   bottom: {style: 'thick'},
+        //   right: {style: 'thick'}
+        // };
 
         // 设置百分比格式
         if ((rowNumber === 6 || rowNumber === 7) && colNumber === 5) {
@@ -1341,6 +1367,12 @@ async function generateExcelBuffer(groups = []) {
         horizontal: cell.alignment?.horizontal || 'center',
         wrapText: true
       };
+      // cell.border = {
+      //   top: {style: 'thick'},
+      //   left: {style: 'thick'},
+      //   bottom: {style: 'thick'},
+      //   right: {style: 'thick'}
+      // };
 
       // 设置百分比格式：H、I（列号 8、9）
       const percentColumns = [8, 9];
@@ -1496,7 +1528,8 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
 
       // ✅ 添加当前组数据
       groups.push({
-        sheetName: `sheet${groups.length + 1}`,
+        sheetNum: groups.length + 1,
+        sheetName: `借款${groups.length + 1}`,
         name,
         amount,
         rate,
@@ -1618,6 +1651,7 @@ app.post('/generate-excel-zip', upload.any(), async (req, res) => {
           }
 
           groups.push({
+            sheetNum: groups.length + 1,
             sheetName: `sheet${groups.length + 1}`,
             name,
             amount,
