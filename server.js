@@ -51,15 +51,15 @@ async function generateExcelBuffer(groups = []) {
   const sumRowNumbers = [];  // 记录每个子表的总结行号
   const summarySheet = workbook.addWorksheet('总表');
   summarySheet.columns = [
-    {key: 'A', width: 11.25}, {key: 'B', width: 11.25},
-    {key: 'C', width: 11.25}, {key: 'D', width: 11.25},
-    {key: 'E', width: 11.25}, {key: 'F', width: 11.25},
-    {key: 'G', width: 11.25}, {key: 'H', width: 11.25},
-    {key: 'I', width: 11.25}, {key: 'J', width: 11.25},
-    {key: 'K', width: 11.25}, {key: 'L', width: 11.25},
-    {key: 'M', width: 11.25}, {key: 'N', width: 11.25},
-    {key: 'O', width: 11.25}, {key: 'P', width: 11.25},
-    {key: 'Q', width: 11.25}, {key: 'R', width: 11.25}
+    {key: 'A', width: 13.25}, {key: 'B', width: 13.25},
+    {key: 'C', width: 13.25}, {key: 'D', width: 13.25},
+    {key: 'E', width: 13.25}, {key: 'F', width: 13.25},
+    {key: 'G', width: 13.25}, {key: 'H', width: 13.25},
+    {key: 'I', width: 13.25}, {key: 'J', width: 13.25},
+    {key: 'K', width: 13.25}, {key: 'L', width: 13.25},
+    {key: 'M', width: 13.25}, {key: 'N', width: 13.25},
+    {key: 'O', width: 13.25}, {key: 'P', width: 13.25},
+    {key: 'Q', width: 13.25}, {key: 'R', width: 13.25}, {key: 'S', width: 13.25}
   ];
   // 插入标题行（a = name，b = currentDate）
   const a = groups?.[0]?.name || '未知借款人';
@@ -111,7 +111,7 @@ async function generateExcelBuffer(groups = []) {
     const worksheet = workbook.addWorksheet(sheetName);
 
     worksheet.columns = [
-      {key: 'A', width: 15}, {key: 'B', width: 11.25},
+      {key: 'A', width: 15},    {key: 'B', width: 11.25},
       {key: 'C', width: 11.25}, {key: 'D', width: 11.25},
       {key: 'E', width: 15},    {key: 'F', width: 11.25},
       {key: 'G', width: 11.25}, {key: 'H', width: 11.25},
@@ -1057,9 +1057,22 @@ async function generateExcelBuffer(groups = []) {
 
     // 从startRow到currentRowIdx求和
     for (const {letter, index} of sumCols) {
-      sumRow.getCell(index).value = {
-        formula: `SUM(${letter}${startRow}:${letter}${sumIdx})`
-      };
+      let formula;
+
+      if (letter === 'M') {
+        formula = `IF(SUM(${letter}${startRow}:${letter}${sumIdx}) >= Z${
+            sumRowIndex}, SUM(${letter}${startRow}:${letter}${sumIdx}) - Z${
+            sumRowIndex}, 0)`;
+      } else if (letter === 'S') {
+        formula = `IF(SUM(M${startRow}:M${sumIdx}) >= Z${sumRowIndex}, SUM(${
+            letter}${startRow}:${letter}${sumIdx}), SUM(${letter}${startRow}:${
+            letter}${sumIdx}) - Z${sumRowIndex} + SUM(M${startRow}:M${
+            sumIdx}))`;
+      } else {
+        formula = `SUM(${letter}${startRow}:${letter}${sumIdx})`;
+      }
+
+      sumRow.getCell(index).value = {formula};
     }
 
     // K L的值从原来最后一行拿
@@ -1107,7 +1120,6 @@ async function generateExcelBuffer(groups = []) {
       row.commit();
     });
 
-
     worksheet.eachRow((row, rowNumber) => {
       row.eachCell((cell, colNumber) => {
         // 设置通用对齐样式
@@ -1153,6 +1165,34 @@ async function generateExcelBuffer(groups = []) {
         }
       });
     });
+
+    // 设置边框
+    const realLastRowIdx = displayStartRow + finalRows.length - 1;
+    // 设置边框样式：medium + 黑色
+    const borderStyle = {
+      top: {style: 'medium', color: {argb: 'FF000000'}},
+      bottom: {style: 'medium', color: {argb: 'FF000000'}},
+      left: {style: 'medium', color: {argb: 'FF000000'}},
+      right: {style: 'medium', color: {argb: 'FF000000'}}
+    };
+
+    // 1. 设置 A1:E13 的边框
+    for (let rowIdx = 1; rowIdx <= 13; rowIdx++) {
+      const row = worksheet.getRow(rowIdx);
+      for (let colIdx = 1; colIdx <= 5; colIdx++) {  // A-E = 1-5
+        const cell = row.getCell(colIdx);
+        cell.border = borderStyle;
+      }
+    }
+
+    // 2. 设置 A15:AA{realLastRowIdx} 的边框
+    for (let rowIdx = 15; rowIdx <= realLastRowIdx; rowIdx++) {
+      const row = worksheet.getRow(rowIdx);
+      for (let colIdx = 1; colIdx <= 27; colIdx++) {  // A-AA = 1-27
+        const cell = row.getCell(colIdx);
+        cell.border = borderStyle;
+      }
+    }
   }
 
   // 总表
@@ -1246,6 +1286,11 @@ async function generateExcelBuffer(groups = []) {
     // 设置加粗字体
     cell.font = {bold: true};
   }
+  // 总表特殊单元格
+  sumRow.getCell(19).value = {
+    formula: `N${ssumIdx} + O${ssumIdx}+ R${ssumIdx}`
+  };
+  sumRow.getCell(19).font = {bold: true};
 
   // 提交合计行
   sumRow.commit();
@@ -1381,7 +1426,7 @@ async function generateExcelBuffer(groups = []) {
       }
 
       // 设置千分位 + 两位小数：G、J、K、L、M、N、O、P、Q、R
-      const decimalColumns = [7, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+      const decimalColumns = [7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
       if (decimalColumns.includes(colNumber)) {
         cell.numFmt = '#,##0.00';
       }
@@ -1393,6 +1438,67 @@ async function generateExcelBuffer(groups = []) {
       }
     });
   });
+
+  // 加边框
+  // 设置边框样式：medium + 黑色
+  const borderStyle = {
+    top: {style: 'medium', color: {argb: 'FF000000'}},
+    bottom: {style: 'medium', color: {argb: 'FF000000'}},
+    left: {style: 'medium', color: {argb: 'FF000000'}},
+    right: {style: 'medium', color: {argb: 'FF000000'}}
+  };
+  // 1. summarySheet：第 1 行 到 ssumIdx 行，列 A-R（1-18）
+  for (let rowIdx = 1; rowIdx <= ssumIdx; rowIdx++) {
+    const row = summarySheet.getRow(rowIdx);
+    for (let colIdx = 1; colIdx <= 18; colIdx++) {
+      const cell = row.getCell(colIdx);
+      cell.border = borderStyle;
+    }
+  }
+
+  // 2. summarySheet：从 ssumIdx + 2 到 outputIdx - 1 行，列 B-R（2-18）
+  for (let rowIdx = ssumIdx + 2; rowIdx < outputIdx; rowIdx++) {
+    const row = summarySheet.getRow(rowIdx);
+    for (let colIdx = 2; colIdx <= 18; colIdx++) {
+      const cell = row.getCell(colIdx);
+      cell.border = borderStyle;
+    }
+  }
+
+  // 设置背景色：橙黄色（N~R列 = 14~18）
+  const highlightColor = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: {argb: 'FFF9A825'}  // 橙黄色
+  };
+
+  // 行号数组：第1行和第ssumIdx行
+  const highlightRows = [2, ssumIdx];
+
+  // 应用于 summarySheet 的 N~R 列（14~18）
+  for (const rowIdx of highlightRows) {
+    const row = summarySheet.getRow(rowIdx);
+    for (let colIdx = 14; colIdx <= 18; colIdx++) {
+      const cell = row.getCell(colIdx);
+      cell.fill = highlightColor;
+    }
+  }
+
+  // 设置亮黄色背景色（纯黄）
+  const yellowFill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: {argb: 'FFFFFF00'}  // 亮黄
+  };
+
+  // 设置 summarySheet 的 B~R 列（2~18）背景色
+  for (let rowIdx = ssumIdx + 2; rowIdx < outputIdx; rowIdx++) {
+    const row = summarySheet.getRow(rowIdx);
+    for (let colIdx = 2; colIdx <= 18; colIdx++) {
+      const cell = row.getCell(colIdx);
+      cell.fill = yellowFill;
+    }
+  }
 
   const excelbuffer = await workbook.xlsx.writeBuffer();
   const bufferName = `${a}截止${b}`;
