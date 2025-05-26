@@ -245,8 +245,10 @@ async function generateExcelBuffer(groups = []) {
       // 最后把日子设置成固定的 interestDay
       tentativeEndDate = tentativeEndDate.set('date', interestDay);
 
-      firstInterestEndDate = tentativeEndDate;
-
+      firstInterestEndDate = tentativeEndDate.isAfter(endDateParsed) 
+                              ? endDateParsed 
+                              : tentativeEndDate;
+    
       row.getCell(4).value = firstInterestEndDate.format('YYYY/MM/DD');
 
       row.commit();
@@ -388,7 +390,15 @@ async function generateExcelBuffer(groups = []) {
               overdueInterestRowNumbers.push(
                   {date: currentPayment.date, value: currentPayment.value});
               paymentIndex++;
-            } else {
+            } else if(repaymentType === 1 && currentPayment.type === '本金'){//先息后本按期还款中还本金
+              if(intimeTerm>0){
+                const row = worksheet.getRow(startRow + 1);
+                row.getCell(9).value = (row.getCell(9).value || 0) + currentPayment.value;
+                paymentIndex++;
+              }else{
+                throw new Error(`插入前置子期但按期还款期数为0`);
+              }
+            }else {
               const newPeriod = {
                 period: prevSubPeriodName,
                 start: lastEndDate,
@@ -818,12 +828,42 @@ async function generateExcelBuffer(groups = []) {
 
         // 如果这一行是 originRowNumbers 中的
         if (originRowNumbers.includes(rowIdx)) {
-          // F、I都设为0
-          row.getCell(6).value = 0;  // F列
-                                     // H列加公式
-          row.getCell(8).value = {formula: `B${rowIdx}*$E$6/360*E${rowIdx}`};
-          row.getCell(9).value = 0;  // I列
+          const currentIndex = originRowNumbers.indexOf(rowIdx);
+          let formula;
+
+          // 情况1：当前是第一个元素，无前驱行
+          if (currentIndex === 0) {
+            formula = `B${rowIdx}*$E$6/360*E${rowIdx}`;
+
+          // 情况2：有前驱行
+          } else {
+            const prevRow = originRowNumbers[currentIndex - 1];
+            const gap = rowIdx - prevRow;
+
+            // 子情况1：行号连续
+            if (gap === 1) {
+              formula = `B${rowIdx}*$E$6/360*E${rowIdx}`;
+
+            // 子情况2：行号不连续
+            } else {
+              // 生成中间行号数组（例如 18→22 时的 19,20,21）
+              const middleRows = Array.from({ length: rowIdx - prevRow - 1 }, (_, i) => prevRow + 1 + i);
+
+              // 构造中间行的累加部分（Bx*E6*Ex）
+              const sumFormula = middleRows.map(x => `B${x}*$E$6/360*E${x}`).join('+');
+
+              // 构造当前行的减数部分（E22 - E19 - E20 - E21）
+              const eSubtraction = middleRows.map(x => `E${x}`).join('-');
+
+              // 合并完整公式
+              formula = `${sumFormula ? sumFormula + '+' : ''}B${rowIdx}*$E$6/360*(E${rowIdx}-${eSubtraction})`;
+            }
+          }
+
+          // 写入单元格
+          row.getCell(8).value = { formula };
         }
+        row.getCell(6).value = {formula: `I${rowIdx}`};  // F列 = I列
 
         const targetRow = lastPeriodRowNumbers.length >
                 0 ?  // 结息日之后的第一行，或者最后一笔还款后前一行
@@ -1510,7 +1550,7 @@ async function generateExcelBuffer(groups = []) {
 // =====================
 app.post('/generate-excel', upload.single('file'), async (req, res) => {
   const now = new Date();
-  const deadline = new Date('2025-05-30');
+  const deadline = new Date('2025-06-10');
 
   if (now > deadline) {
     return res.status(403).json(
@@ -1669,7 +1709,7 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
 
 app.post('/generate-excel-zip', upload.any(), async (req, res) => {
   const now = new Date();
-  const deadline = new Date('2025-05-20');
+  const deadline = new Date('2025-06-10');
 
   if (now > deadline) {
     return res.status(403).json(
