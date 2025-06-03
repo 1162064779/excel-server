@@ -100,6 +100,7 @@ async function generateExcelBuffer(groups = []) {
       term,
       startDate,
       endDate,
+      isLarger30,
       repayment,
       interestDay,
       intimeTerm,
@@ -234,21 +235,27 @@ async function generateExcelBuffer(groups = []) {
       // 起息日
       row.getCell(3).value = startDateParsed.format('YYYY/MM/DD');
 
-      // 计算第一段的结息日
-      let tentativeEndDate = startDateParsed.add(intimeTerm, 'month');
-
-      // 如果起息日的“日”大于 interestDay，需要额外再推1个月
-      if (startDateParsed.date() > interestDay) {
+      let tentativeEndDate =
+          startDateParsed.add(intimeTerm - 1, 'month').date(interestDay);
+      // 计算“下一个结息日”
+      let nextInterestDate = startDateParsed.date(interestDay);
+      if (!nextInterestDate.isAfter(startDateParsed)) {
+        // 如果当前月的 interestDay 已经过了，则取下个月的 interestDay
+        nextInterestDate = nextInterestDate.add(1, 'month');
         tentativeEndDate = tentativeEndDate.add(1, 'month');
       }
 
-      // 最后把日子设置成固定的 interestDay
-      tentativeEndDate = tentativeEndDate.set('date', interestDay);
+      // 判断差值
+      const diffDays = nextInterestDate.diff(startDateParsed, 'day');
 
-      firstInterestEndDate = tentativeEndDate.isAfter(endDateParsed) 
-                              ? endDateParsed 
-                              : tentativeEndDate;
-    
+      if (isLarger30) {
+        tentativeEndDate = tentativeEndDate.add(1, 'month');
+      }
+
+      firstInterestEndDate = tentativeEndDate.isAfter(endDateParsed) ?
+          endDateParsed :
+          tentativeEndDate;
+
       row.getCell(4).value = firstInterestEndDate.format('YYYY/MM/DD');
 
       row.commit();
@@ -281,11 +288,19 @@ async function generateExcelBuffer(groups = []) {
       const prevEndDateStr = worksheet.getRow(rowIndex).getCell(3).value;
       const prevEndDateParsed = dayjs(prevEndDateStr);
 
-      let nextEndDate =
-          prevEndDateParsed.add(1, 'month').set('date', interestDay);
-
-      if (nextEndDate.isBefore(prevEndDateParsed.add(1, 'month'), 'day')) {
-        nextEndDate = nextEndDate.add(1, 'month');
+      let nextEndDate;
+      if (i === intimeTerm + 1) {
+        nextEndDate = prevEndDateParsed.date(interestDay);
+        if (!nextEndDate.isAfter(prevEndDateParsed)) {
+          // 如果当前月的 interestDay 已经过了，则取下个月的 interestDay
+          nextEndDate = nextEndDate.add(1, 'month');
+        }
+        if (isLarger30) {
+          // 如果设置第一期大于30天，就再加一个月
+          nextEndDate = nextEndDate.add(1, 'month');
+        }
+      } else {
+        nextEndDate = prevEndDateParsed.add(1, 'month');
       }
 
       if (nextEndDate.isAfter(endDateParsed, 'day')) {
@@ -390,15 +405,18 @@ async function generateExcelBuffer(groups = []) {
               overdueInterestRowNumbers.push(
                   {date: currentPayment.date, value: currentPayment.value});
               paymentIndex++;
-            } else if(repaymentType === 1 && currentPayment.type === '本金'){//先息后本按期还款中还本金
-              if(intimeTerm>0){
+            } else if (
+                repaymentType === 1 &&
+                currentPayment.type === '本金') {  // 先息后本按期还款中还本金
+              if (intimeTerm > 0) {
                 const row = worksheet.getRow(startRow + 1);
-                row.getCell(9).value = (row.getCell(9).value || 0) + currentPayment.value;
+                row.getCell(9).value =
+                    (row.getCell(9).value || 0) + currentPayment.value;
                 paymentIndex++;
-              }else{
+              } else {
                 throw new Error(`插入前置子期但按期还款期数为0`);
               }
-            }else {
+            } else {
               const newPeriod = {
                 period: prevSubPeriodName,
                 start: lastEndDate,
@@ -835,7 +853,7 @@ async function generateExcelBuffer(groups = []) {
           if (currentIndex === 0) {
             formula = `B${rowIdx}*$E$6/360*E${rowIdx}`;
 
-          // 情况2：有前驱行
+            // 情况2：有前驱行
           } else {
             const prevRow = originRowNumbers[currentIndex - 1];
             const gap = rowIdx - prevRow;
@@ -844,26 +862,32 @@ async function generateExcelBuffer(groups = []) {
             if (gap === 1) {
               formula = `B${rowIdx}*$E$6/360*E${rowIdx}`;
 
-            // 子情况2：行号不连续
+              // 子情况2：行号不连续
             } else {
               // 生成中间行号数组（例如 18→22 时的 19,20,21）
-              const middleRows = Array.from({ length: rowIdx - prevRow - 1 }, (_, i) => prevRow + 1 + i);
+              const middleRows = Array.from(
+                  {length: rowIdx - prevRow - 1}, (_, i) => prevRow + 1 + i);
 
               // 构造中间行的累加部分（Bx*E6*Ex）
-              const sumFormula = middleRows.map(x => `B${x}*$E$6/360*E${x}`).join('+');
+              const sumFormula =
+                  middleRows.map(x => `B${x}*$E$6/360*E${x}`).join('+');
 
               // 构造当前行的减数部分（E22 - E19 - E20 - E21）
               const eSubtraction = middleRows.map(x => `E${x}`).join('-');
 
               // 合并完整公式
-              formula = `${sumFormula ? sumFormula + '+' : ''}B${rowIdx}*$E$6/360*(E${rowIdx}-${eSubtraction})`;
+              formula = `${sumFormula ? sumFormula + '+' : ''}B${
+                  rowIdx}*$E$6/360*(E${rowIdx}-${eSubtraction})`;
             }
           }
 
           // 写入单元格
-          row.getCell(8).value = { formula };
+          row.getCell(8).value = {formula};
         }
         row.getCell(6).value = {formula: `I${rowIdx}`};  // F列 = I列
+        if (lastPeriodRowNumbers.includes(rowIdx)) {
+          row.getCell(6).value = 0;  // F列 = 0
+        }
 
         const targetRow = lastPeriodRowNumbers.length >
                 0 ?  // 结息日之后的第一行，或者最后一笔还款后前一行
@@ -1616,9 +1640,14 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
       const endDate = sheet.getCell(`${colAmount}9`).value || '';
       console.log(`第 ${groupIndex + 1} 组 到期日 (${colAmount}9): ${endDate}`);
 
-      const repaymentCell = sheet.getCell(`${colAmount}10`).value || '';
+      const rawIsLarger30 = sheet.getCell(`${colAmount}10`).value;
+      const isLarger30 = rawIsLarger30 === '是';
+      console.log(`第 ${groupIndex + 1} 组 是否大于30天 (${colAmount}10): ${
+          isLarger30 ? '是（true）' : '否（false）'}`);
+
+      const repaymentCell = sheet.getCell(`${colAmount}11`).value || '';
       console.log(
-          `第 ${groupIndex + 1} 组 还款方式原始值 (${colAmount}10):`,
+          `第 ${groupIndex + 1} 组 还款方式原始值 (${colAmount}11):`,
           repaymentCell);
 
       const repayment =
@@ -1642,17 +1671,28 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
             repayment}`);
       }
 
-      const interestDay = parseInt(sheet.getCell(`${colAmount}11`).value) || 21;
+      const interestDay = parseInt(sheet.getCell(`${colAmount}12`).value) || 21;
       console.log(
-          `第 ${groupIndex + 1} 组 结息日 (${colAmount}11): ${interestDay} 日`);
+          `第 ${groupIndex + 1} 组 结息日 (${colAmount}12): ${interestDay} 日`);
 
-      const intimeTerm = parseInt(sheet.getCell(`${colAmount}12`).value) || 0;
-      console.log(`第 ${groupIndex + 1} 组 提前还款期限 (${colAmount}12): ${
-          intimeTerm} 天`);
+      const cell = sheet.getCell(`${colAmount}14`);
+      // 先拿到单元格的“原始值”(raw)
+      const raw = (typeof cell.value === 'object' && cell.value !== null &&
+                   'formula' in cell.value) ?
+          cell.value.result  // 公式缓存
+          :
+          cell.value;  // 普通单元格
+
+      // 把 undefined / null / NaN 统统替换成 0
+      const intimeTerm = Number.isFinite(Number(raw)) ? Number(raw) : 0;
+      console.log(
+          `第 ${groupIndex + 1} 组 提前还款期限 (${colAmount}14): ${
+              intimeTerm} 天`,
+      );
 
       //  从第13行开始读取还款明细
       const paymentPairs = [];
-      let row = 13;
+      let row = 15;
 
       while (true) {
         const dateCell = sheet.getCell(`${colDate}${row}`).value;
@@ -1683,6 +1723,7 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
         term,
         startDate,
         endDate,
+        isLarger30,
         repayment,
         interestDay,
         intimeTerm,
@@ -1703,7 +1744,7 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
     });
   } catch (err) {
     console.error('生成失败:', err);
-    res.status(500).send(`生成失败: ${err.message}`);
+    res.status(500).json({message: `生成失败: ${err.message}`});
   }
 });
 
@@ -1740,26 +1781,63 @@ app.post('/generate-excel-zip', upload.any(), async (req, res) => {
 
         for (let groupIndex = 0; groupIndex < maxGroups; groupIndex++) {
           const baseIdx = 3 + groupIndex * 4;
-          const colDate = allColumns[baseIdx];
-          const colAmount = allColumns[baseIdx + 1];
-          const colType = allColumns[baseIdx + 2];
 
+          const colDate = allColumns[baseIdx];  // 日期列
+          const colAmount =
+              allColumns[baseIdx + 1];  // 金额列（也是参数基准列）
+          const colType = allColumns[baseIdx + 2];  // 类型列
+
+          console.log(` 正在处理第 ${groupIndex + 1} 组，列分别为：日期列 = ${
+              colDate}，金额列 = ${colAmount}，类型列 = ${colType}`);
+
+          // 参数区域（第 4~12 行）以金额列为基准
           const amount = parseFloat(sheet.getCell(`${colAmount}4`).value) || 0;
-          if (!amount) break;
+
+          //  如果关键字段为空，说明没有这一组了，跳出循环
+          if (!amount) {
+            break;
+          }
+
+          console.log(
+              `第 ${groupIndex + 1} 组 金额 (${colAmount}4): ${amount}`);
 
           const rate =
               parseFloat(sheet.getCell(`${colAmount}5`).value) * 100 || 0;
+          console.log(`第 ${groupIndex + 1} 组 利率 (${colAmount}5): ${rate}%`);
+
           const lateRate =
               parseFloat(sheet.getCell(`${colAmount}6`).value) * 100 || 0;
+          console.log(
+              `第 ${groupIndex + 1} 组 罚息利率 (${colAmount}6): ${lateRate}%`);
+
           const term = parseInt(sheet.getCell(`${colAmount}7`).value) || 0;
+          console.log(
+              `第 ${groupIndex + 1} 组 期限 (${colAmount}7): ${term} 月`);
+
           const startDate = sheet.getCell(`${colAmount}8`).value || '';
+          console.log(
+              `第 ${groupIndex + 1} 组 起始日 (${colAmount}8): ${startDate}`);
+
           const endDate = sheet.getCell(`${colAmount}9`).value || '';
-          const repaymentCell = sheet.getCell(`${colAmount}10`).value || '';
+          console.log(
+              `第 ${groupIndex + 1} 组 到期日 (${colAmount}9): ${endDate}`);
+
+          const rawIsLarger30 = sheet.getCell(`${colAmount}10`).value;
+          const isLarger30 = rawIsLarger30 === '是';
+          console.log(`第 ${groupIndex + 1} 组 是否大于30天 (${colAmount}10): ${
+              isLarger30 ? '是（true）' : '否（false）'}`);
+
+          const repaymentCell = sheet.getCell(`${colAmount}11`).value || '';
+          console.log(
+              `第 ${groupIndex + 1} 组 还款方式原始值 (${colAmount}11):`,
+              repaymentCell);
 
           const repayment =
               (typeof repaymentCell === 'object' && repaymentCell.richText) ?
               repaymentCell.richText.map(part => part.text).join('').trim() :
               String(repaymentCell || '').trim();
+
+          console.log(`第 ${groupIndex + 1} 组 还款方式解析后: ${repayment}`);
 
           let repaymentType = null;
           if (repayment.includes('先息后本')) {
@@ -1769,23 +1847,45 @@ app.post('/generate-excel-zip', upload.any(), async (req, res) => {
           } else if (repayment.includes('等额本息')) {
             repaymentType = 3;
           } else {
-            throw new Error(
-                `第 ${groupIndex + 1} 组还款方式不正确：${repayment}`);
+            throw new Error(`第 ${
+                groupIndex +
+                1} 组的还款方式必须为先息后本、等额本金、等额本息，但实际为：${
+                repayment}`);
           }
 
           const interestDay =
-              parseInt(sheet.getCell(`${colAmount}11`).value) || 21;
-          const intimeTerm =
-              parseInt(sheet.getCell(`${colAmount}12`).value) || 0;
+              parseInt(sheet.getCell(`${colAmount}12`).value) || 21;
+          console.log(`第 ${groupIndex + 1} 组 结息日 (${colAmount}12): ${
+              interestDay} 日`);
 
+          const cell = sheet.getCell(`${colAmount}14`);
+          // ① 先拿到单元格的“原始值”(raw)
+          const raw = (typeof cell.value === 'object' && cell.value !== null &&
+                       'formula' in cell.value) ?
+              cell.value.result  // 公式缓存
+              :
+              cell.value;  // 普通单元格
+
+          // ② 把 undefined / null / NaN 统统替换成 0
+          const intimeTerm = Number.isFinite(Number(raw)) ? Number(raw) : 0;
+          console.log(
+              `第 ${groupIndex + 1} 组 提前还款期限 (${colAmount}14): ${
+                  intimeTerm} 天`,
+          );
+
+          //  从第15行开始读取还款明细
           const paymentPairs = [];
-          let row = 13;
+          let row = 15;
+
           while (true) {
             const dateCell = sheet.getCell(`${colDate}${row}`).value;
             const valueCell = sheet.getCell(`${colAmount}${row}`).value;
             const typeCell = sheet.getCell(`${colType}${row}`).value;
 
-            if (valueCell == null || valueCell === '') break;
+            if (valueCell === null || valueCell === undefined ||
+                valueCell === '') {
+              break;
+            }
 
             paymentPairs.push({
               date: dateCell,
@@ -1798,7 +1898,7 @@ app.post('/generate-excel-zip', upload.any(), async (req, res) => {
 
           groups.push({
             sheetNum: groups.length + 1,
-            sheetName: `sheet${groups.length + 1}`,
+            sheetName: `借款${groups.length + 1}`,
             name,
             amount,
             rate,
@@ -1806,6 +1906,7 @@ app.post('/generate-excel-zip', upload.any(), async (req, res) => {
             term,
             startDate,
             endDate,
+            isLarger30,
             repayment,
             interestDay,
             intimeTerm,
