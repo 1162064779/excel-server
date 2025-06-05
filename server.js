@@ -1945,7 +1945,7 @@ app.post('/generate-excel-zip', upload.any(), async (req, res) => {
 app.listen(PORT, () => {
   const url = `http://localhost:${PORT}`;
   console.log(`✅ 服务运行中：${url}`);
-  openUrl(url);
+  // openUrl(url);
 });
 
 // =====================
