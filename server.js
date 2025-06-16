@@ -310,7 +310,8 @@ async function generateExcelBuffer(groups = []) {
             nextEndDate.format('YYYY/MM/DD')}`);
         periodsEndRow = rowIndex;
         break;
-      } else if (nextEndDate.isAfter(currentDateParsed, 'day')) {
+      } else if (nextEndDate.isAfter(currentDateParsed, 'day') ||
+      nextEndDate.isSame(currentDateParsed, 'day')) {
         nextEndDate = currentDateParsed;
         row.getCell(4).value = nextEndDate.format('YYYY/MM/DD');
         console.log(`超过 currentDate，使用当前 currentDate ${
@@ -1574,7 +1575,7 @@ async function generateExcelBuffer(groups = []) {
 // =====================
 app.post('/generate-excel', upload.single('file'), async (req, res) => {
   const now = new Date();
-  const deadline = new Date('2025-06-10');
+  const deadline = new Date('2025-07-10');
 
   if (now > deadline) {
     return res.status(403).json(
