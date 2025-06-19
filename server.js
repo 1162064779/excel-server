@@ -1670,7 +1670,7 @@ async function generateExcelBuffer(groups = [], infoGroup = {}) {
   });
   const finalCol = additionalStartCol + additionalFields.length;
 
-  for (let col = 2; col <= finalCol; col++) {
+  for (let col = 2; col < finalCol; col++) {
     const headerCell = headerRow.getCell(col);
     const dataCell = row2.getCell(col);
 
