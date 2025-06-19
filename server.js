@@ -42,7 +42,7 @@ function generateExcelColumnNames(count) {
  * @param {Array} groups - 传入多个 group，每个 group 有一个 sheet
  * @returns {Promise<Buffer>}
  */
-async function generateExcelBuffer(groups = []) {
+async function generateExcelBuffer(groups = [], infoGroup = {}) {
   const workbook = new ExcelJS.Workbook();
   // 设置工作簿的全局计算模式为自动
   workbook.calcProperties.fullCalcOnLoad = true;  // ⚡关键设置
@@ -221,6 +221,9 @@ async function generateExcelBuffer(groups = []) {
     let periodsStartRow = startRow + intimeTermOffset + 1;
     let periodsEndRow = -1;
 
+    if (startDateParsed.date() === interestDay) {
+      isLarger30 = false;
+    }
     // 生成提前还款 (只生成一行)
     if (intimeTerm > 0) {
       const row = worksheet.getRow(startRow + 1);
@@ -310,8 +313,9 @@ async function generateExcelBuffer(groups = []) {
             nextEndDate.format('YYYY/MM/DD')}`);
         periodsEndRow = rowIndex;
         break;
-      } else if (nextEndDate.isAfter(currentDateParsed, 'day') ||
-      nextEndDate.isSame(currentDateParsed, 'day')) {
+      } else if (
+          nextEndDate.isAfter(currentDateParsed, 'day') ||
+          nextEndDate.isSame(currentDateParsed, 'day')) {
         nextEndDate = currentDateParsed;
         row.getCell(4).value = nextEndDate.format('YYYY/MM/DD');
         console.log(`超过 currentDate，使用当前 currentDate ${
@@ -1351,6 +1355,7 @@ async function generateExcelBuffer(groups = []) {
     // 设置加粗字体
     cell.font = {bold: true};
   }
+
   // 总表特殊单元格
   sumRow.getCell(19).value = {
     formula: `N${ssumIdx} + O${ssumIdx}+ R${ssumIdx}`
@@ -1435,6 +1440,8 @@ async function generateExcelBuffer(groups = []) {
   // 第二步：生成公式并写入
   let outputIdx = ssumIdx + 2;
 
+  const summaryValues = [];  // 额外记录 sum 和 rate 的值，用于信息汇总表
+
   for (const [rate, rowIndices] of rateGroups.entries()) {
     // --- 错误处理：跳过空分组 ---
     if (rowIndices.length === 0) {
@@ -1462,9 +1469,12 @@ async function generateExcelBuffer(groups = []) {
     // 合并 B → R（第2列 → 第18列）
     summarySheet.mergeCells(outputRow.number, 2, outputRow.number, 18);
     outputRow.getCell(2).value = {
-      formula: `=${formulaText}`  // ⚡ 必须以等号开头
+      formula: `=${formulaText}`  // 必须以等号开头
     };
     outputRow.commit();
+
+    summaryValues.push(
+        {sumFormula, rate});  // 额外记录 sum 和 rate 的值，用于信息汇总表
   }
 
 
@@ -1565,6 +1575,126 @@ async function generateExcelBuffer(groups = []) {
     }
   }
 
+  const infoIdx = outputIdx + 5;
+  const headerRow = summarySheet.getRow(infoIdx);
+  const row2 = summarySheet.getRow(infoIdx + 1);
+
+  // 解析身份证信息
+  function parseIdNumber(idNumber) {
+    if (!/^\d{17}[\dXx]$/.test(idNumber)) return {gender: '', birth: ''};
+    const birth = idNumber.slice(6, 14);
+    const birthFormatted = `${birth.slice(0, 4)}-${birth.slice(4, 6)}`;
+    const genderCode = Number(idNumber[16]);
+    const gender = genderCode % 2 === 0 ? '女' : '男';
+    return {gender, birth: birthFormatted};
+  }
+  const {gender, birth} = parseIdNumber(infoGroup.idNumber);
+
+  // 构建汇总字段数组
+  const summaryFields = [
+    {title: '借款人', value: a}, {title: '性别', value: gender},
+    {title: '出生年月', value: birth},
+    {title: '身份证号', value: infoGroup.idNumber},
+    {title: '户籍地', value: infoGroup.registeredAddress},
+    {title: '联系地址', value: infoGroup.contactAddress},
+    {title: '被告手机号', value: infoGroup.defendantPhoneNumber},
+    {title: '暂计日期', value: dayjs(rawDate).format('YYYY/MM/DD')}, {
+      title: '开口计算开始日',
+      value: dayjs(rawDate).add(1, 'day').format('YYYY/MM/DD')
+    },
+    {title: '本金', value: {formula: `N${ssumIdx}`}},
+    {title: '利息', value: {formula: `O${ssumIdx}`}},
+    {title: '逾期利息', value: {formula: `R${ssumIdx}`}},
+    {title: '标的额', value: {formula: `S${ssumIdx}`}}
+  ];
+
+  const decimalFields =
+      ['本金', '利息', '逾期利息', '标的额', '律师费', '贷款总额', '已还本金'];
+
+  summaryFields.forEach((item, index) => {
+    const col = index + 2;
+    const headerCell = headerRow.getCell(col);
+    const dataCell = row2.getCell(col);
+
+    headerCell.value = item.title;
+    dataCell.value = item.value;
+
+    // 如果是需要保留两位小数的字段
+    if (decimalFields.includes(item.title)) {
+      dataCell.numFmt = '0.00';
+    }
+  });
+
+  // 写入动态列（本息、逾期利息）
+  const summaryStartCol = summaryFields.length + 2;
+  summaryValues.forEach((item, i) => {
+    const baseCol = summaryStartCol + i * 2;
+    headerRow.getCell(baseCol).value = `本息${i + 1}`;
+    headerRow.getCell(baseCol + 1).value = `逾期利息${i + 1}`;
+    const sumCell = row2.getCell(baseCol);
+    sumCell.value = {formula: item.sumFormula};
+    sumCell.numFmt = '0.00';
+    const rateCell = row2.getCell(baseCol + 1);
+    rateCell.value = item.rate;
+    rateCell.numFmt = '0.00%';
+  });
+
+  // 写入附加字段
+  const additionalFields = [
+    {title: '律师费', value: infoGroup.lawyerFee}, {
+      title: '合同签署日',
+      value: dayjs(infoGroup.contractSignDate).format('YYYY/MM/DD')
+    },
+    {title: '合同名称', value: infoGroup.contractName}, {
+      title: '首次放款日',
+      value: dayjs(infoGroup.firstLoanDate).format('YYYY/MM/DD')
+    },
+    {title: '贷款总额', value: infoGroup.totalLoanAmount},
+    {title: '已还本金', value: {formula: `J${ssumIdx}`}},
+    {title: '产品名称', value: infoGroup.productName}
+  ];
+
+  const additionalStartCol = summaryStartCol + summaryValues.length * 2;
+  additionalFields.forEach((item, i) => {
+    const col = additionalStartCol + i;
+    const headerCell = headerRow.getCell(col);
+    const dataCell = row2.getCell(col);
+
+    headerCell.value = item.title;
+    dataCell.value = item.value;
+
+    // 设置数值格式：保留两位小数
+    if (decimalFields.includes(item.title)) {
+      dataCell.numFmt = '0.00';
+    }
+  });
+  const finalCol = additionalStartCol + additionalFields.length;
+
+  for (let col = 2; col <= finalCol; col++) {
+    const headerCell = headerRow.getCell(col);
+    const dataCell = row2.getCell(col);
+
+    // 表头行样式（背景、加粗、居中、边框）
+    headerCell.fill = yellowFill;
+    headerCell.font = {bold: true};
+    headerCell
+        .alignment = {vertical: 'middle', horizontal: 'center', wrapText: true};
+    headerCell.border = borderStyle;
+
+    // 数据行样式（居中、边框）
+    dataCell
+        .alignment = {vertical: 'middle', horizontal: 'center', wrapText: true};
+    dataCell.border = borderStyle;
+  }
+
+  // 设置列宽
+  for (let col = 1; col <= finalCol; col++) {
+    summarySheet.getColumn(col).width = 17.5;
+  }
+  headerRow.commit();
+  row2.commit();
+
+
   const excelbuffer = await workbook.xlsx.writeBuffer();
   const bufferName = `${a}截止${b}`;
   return {excelbuffer, bufferName};
@@ -1596,6 +1726,18 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
     console.log(`工作表行数: ${sheet.rowCount}, 列数: ${sheet.columnCount}`);
 
     const name = sheet.getCell('B1').value || '';
+    const infoGroup = {
+      idNumber: sheet.getCell('B4').value || '',
+      registeredAddress: sheet.getCell('B5').value || '',
+      contactAddress: sheet.getCell('B6').value || '',
+      defendantPhoneNumber: sheet.getCell('B7').value || '',
+      lawyerFee: sheet.getCell('B8').value || '',
+      contractSignDate: sheet.getCell('B9').value || '',
+      contractName: sheet.getCell('B10').value || '',
+      firstLoanDate: sheet.getCell('B11').value || '',
+      totalLoanAmount: sheet.getCell('B12').value || '',
+      productName: sheet.getCell('B13').value || ''
+    };
     const groups = [];
     const maxGroups = 30;  // 最多支持 30 组（你可以修改为任意值）
 
@@ -1734,7 +1876,8 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
       });
     }
 
-    const {excelbuffer, bufferName} = await generateExcelBuffer(groups);
+    const {excelbuffer, bufferName} =
+        await generateExcelBuffer(groups, infoGroup);
 
     // 将文件内容转成 base64 字符串
     const base64 = excelbuffer.toString('base64');
@@ -1751,7 +1894,7 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
 
 app.post('/generate-excel-zip', upload.any(), async (req, res) => {
   const now = new Date();
-  const deadline = new Date('2025-06-10');
+  const deadline = new Date('2025-07-10');
 
   if (now > deadline) {
     return res.status(403).json(
@@ -1775,6 +1918,19 @@ app.post('/generate-excel-zip', upload.any(), async (req, res) => {
         await workbook.xlsx.load(buffer);
         const sheet = workbook.worksheets[0];
         const name = sheet.getCell('B1').value || '';
+
+        const infoGroup = {
+          idNumber: sheet.getCell('B4').value || '',
+          registeredAddress: sheet.getCell('B5').value || '',
+          contactAddress: sheet.getCell('B6').value || '',
+          defendantPhoneNumber: sheet.getCell('B7').value || '',
+          lawyerFee: sheet.getCell('B8').value || '',
+          contractSignDate: sheet.getCell('B9').value || '',
+          contractName: sheet.getCell('B10').value || '',
+          firstLoanDate: sheet.getCell('B11').value || '',
+          totalLoanAmount: sheet.getCell('B12').value || '',
+          productName: sheet.getCell('B13').value || ''
+        };
 
         const groups = [];
         const maxGroups = 30;
@@ -1917,7 +2073,8 @@ app.post('/generate-excel-zip', upload.any(), async (req, res) => {
           });
         }
 
-        const {excelbuffer, bufferName} = await generateExcelBuffer(groups);
+        const {excelbuffer, bufferName} =
+            await generateExcelBuffer(groups, infoGroup);
         zip.file(bufferName + '.xlsx', excelbuffer);
 
       } catch (err) {
@@ -1946,7 +2103,7 @@ app.post('/generate-excel-zip', upload.any(), async (req, res) => {
 app.listen(PORT, () => {
   const url = `http://localhost:${PORT}`;
   console.log(`✅ 服务运行中：${url}`);
-  // openUrl(url);
+  openUrl(url);
 });
 
 // =====================
