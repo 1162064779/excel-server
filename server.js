@@ -1207,11 +1207,11 @@ async function generateExcelBuffer(groups = [], infoGroup = {}) {
 
         // 设置百分比格式
         if ((rowNumber === 6 || rowNumber === 7) && colNumber === 5) {
-          cell.numFmt = '0.00%';
+          cell.numFmt = '0.######%';
         }
 
         if (colNumber === 15 || colNumber === 21) {
-          cell.numFmt = '0.00%';
+          cell.numFmt = '0.######%';
         }
 
         // 两位小数+千分号（行5，列5）
@@ -1395,11 +1395,6 @@ async function generateExcelBuffer(groups = [], infoGroup = {}) {
         if (targetSheet) {
           const targetCell = targetSheet.getCell(cellAddress);
           actualValue = targetCell.value;
-
-          // 处理数值精度
-          if (typeof actualValue === 'number') {
-            actualValue = Number(actualValue.toFixed(4));
-          }
         } else {
           console.error(`工作表不存在: ${sheetName} (行 ${rowIdx})`);
           actualValue = '无效引用';
@@ -1462,7 +1457,7 @@ async function generateExcelBuffer(groups = [], infoGroup = {}) {
     // 构建 Excel 公式（注意 TEXT 保留两位小数，百分比）
     const formulaText = `"以未还本息" & TEXT(${
         sumFormula}, "0.00") & "元为基数，按照年利率" & TEXT(${
-        rateCell}, "0.00%") & "计算"`;
+        rateCell}, "0.######%") & "计算"`;
 
     // --- 写入公式到 Excel ---
     const outputRow = summarySheet.getRow(outputIdx++);
@@ -1497,7 +1492,7 @@ async function generateExcelBuffer(groups = [], infoGroup = {}) {
       // 设置百分比格式：H、I（列号 8、9）
       const percentColumns = [8, 9];
       if (percentColumns.includes(colNumber)) {
-        cell.numFmt = '0.00%';
+        cell.numFmt = '0.######%';
       }
 
       // 设置千分位 + 两位小数：G、J、K、L、M、N、O、P、Q、R
@@ -1636,7 +1631,7 @@ async function generateExcelBuffer(groups = [], infoGroup = {}) {
     sumCell.numFmt = '0.00';
     const rateCell = row2.getCell(baseCol + 1);
     rateCell.value = item.rate;
-    rateCell.numFmt = '0.00%';
+    rateCell.numFmt = '0.######%';
   });
 
   // 写入附加字段
