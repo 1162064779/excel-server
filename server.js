@@ -1699,13 +1699,13 @@ async function generateExcelBuffer(groups = [], infoGroup = {}) {
 // 文件上传并生成 Excel
 // =====================
 app.post('/generate-excel', upload.single('file'), async (req, res) => {
-  const now = new Date();
-  const deadline = new Date('2025-07-10');
+  // const now = new Date();
+  // const deadline = new Date('2025-07-10');
 
-  if (now > deadline) {
-    return res.status(403).json(
-        {message: '超过试用日期，无法继续使用此功能。'});
-  }
+  // if (now > deadline) {
+  //   return res.status(403).json(
+  //       {message: '超过试用日期，无法继续使用此功能。'});
+  // }
   try {
     const {currentDate} = req.body;
     const buffer = req.file.buffer;
@@ -1888,13 +1888,13 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
 });
 
 app.post('/generate-excel-zip', upload.any(), async (req, res) => {
-  const now = new Date();
-  const deadline = new Date('2025-07-10');
+  // const now = new Date();
+  // const deadline = new Date('2025-07-10');
 
-  if (now > deadline) {
-    return res.status(403).json(
-        {message: '超过试用日期，无法继续使用此功能。'});
-  }
+  // if (now > deadline) {
+  //   return res.status(403).json(
+  //       {message: '超过试用日期，无法继续使用此功能。'});
+  // }
 
   try {
     const currentDate = req.body.currentDate;
