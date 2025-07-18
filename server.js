@@ -2093,6 +2093,19 @@ app.post('/generate-excel-zip', upload.any(), async (req, res) => {
 });
 
 // =====================
+// 下载输入表模板
+// =====================
+app.get('/download-template', (req, res) => {
+  const filePath = path.join(__dirname, 'public', 'template', '输入表.xlsx');
+  res.download(filePath, '输入表.xlsx', (err) => {
+    if (err) {
+      console.error('下载模板失败:', err);
+      res.status(500).send('下载失败');
+    }
+  });
+});
+
+// =====================
 // 启动服务
 // =====================
 app.listen(PORT, () => {

@@ -50,9 +50,121 @@
       padding: 2rem;
       border-radius: 12px;
       box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+      width: 85%;
+      max-width: 1920px;
+      animation: fadeIn 0.4s ease-in-out;
+      display: flex;
+      justify-content: center;
+      position: relative;
+    }
+
+    .content-wrapper {
       width: 100%;
       max-width: 480px;
-      animation: fadeIn 0.4s ease-in-out;
+    }
+
+    .info-icon {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      width: 24px;
+      height: 24px;
+      background: var(--zh-purple);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      z-index: 10;
+      transition: all 0.2s ease;
+    }
+
+    .info-icon:hover {
+      background: #8a4ba0;
+      transform: scale(1.1);
+    }
+
+    .info-tooltip {
+      position: absolute;
+      top: 35px;
+      right: 0;
+      background: white;
+      border: 2px solid var(--zh-purple);
+      border-radius: 8px;
+      padding: 1rem;
+      width: 320px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-10px);
+      transition: all 0.3s ease;
+      z-index: 20;
+    }
+
+    .info-icon:hover .info-tooltip {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+
+    .info-tooltip h3 {
+      margin: 0 0 0.5rem 0;
+      color: var(--zh-purple);
+      font-size: 1rem;
+    }
+
+    .info-tooltip p {
+      margin: 0;
+      font-size: 0.85rem;
+      color: #666;
+      line-height: 1.4;
+    }
+
+    .info-tooltip::before {
+      content: '';
+      position: absolute;
+      top: -8px;
+      right: 12px;
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-bottom: 8px solid var(--zh-purple);
+    }
+
+    .contact-info {
+      margin-top: 0.8rem;
+      padding-top: 0.8rem;
+      border-top: 1px solid #e9ecef;
+    }
+
+    .email-copy {
+      color: var(--zh-green);
+      cursor: pointer;
+      font-weight: bold;
+      text-decoration: underline;
+      transition: color 0.2s ease;
+      user-select: all;
+    }
+
+    .email-copy:hover {
+      color: var(--zh-green-dark);
+    }
+
+    .copy-feedback {
+      display: inline-block;
+      margin-left: 0.5rem;
+      color: var(--zh-green);
+      font-size: 0.75rem;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .copy-feedback.show {
+      opacity: 1;
     }
 
     @keyframes fadeIn {
@@ -108,10 +220,147 @@
       background: var(--zh-green-dark);
     }
 
+    .download-btn {
+      background: var(--zh-purple);
+      margin-top: 1.5rem;
+      margin-bottom: 1rem;
+      padding: 0.7rem;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .download-btn:hover {
+      background: #8a4ba0;
+    }
+
+    .download-icon {
+      font-size: 1.1rem;
+    }
+
+
+
     .note {
       font-size: 0.85rem;
       color: #777;
       margin-top: 0.25rem;
+    }
+
+    .upload-container {
+      display: flex;
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      margin-top: 1.5rem;
+      overflow: hidden;
+      background: white;
+    }
+
+    .upload-section {
+      flex: 1;
+      padding: 1.5rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      min-height: 120px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .upload-section.active {
+      flex: 2;
+      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      border: 2px solid var(--zh-purple);
+    }
+
+    .upload-section.inactive {
+      flex: 0.5;
+      opacity: 0.6;
+      background: #f8f9fa;
+    }
+
+    .upload-section h3 {
+      margin: 0 0 0.5rem 0;
+      color: var(--zh-purple);
+      font-size: 1rem;
+      text-align: center;
+    }
+
+    .upload-section.active h3 {
+      color: var(--zh-green);
+    }
+
+    .upload-section p {
+      margin: 0 0 1rem 0;
+      font-size: 0.85rem;
+      color: #666;
+      text-align: center;
+    }
+
+    .upload-section.inactive p {
+      display: none;
+    }
+
+    .upload-section input[type="file"] {
+      margin-top: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .upload-section.inactive input[type="file"] {
+      display: none;
+    }
+
+    .upload-icon {
+      font-size: 2rem;
+      text-align: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .upload-section.inactive .upload-icon {
+      font-size: 1.5rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .section-divider {
+      width: 2px;
+      background: linear-gradient(to bottom, transparent, var(--zh-purple), transparent);
+    }
+
+    .custom-file-input {
+      position: relative;
+      display: inline-block;
+      width: 100%;
+    }
+
+    .custom-file-input input[type="file"] {
+      position: absolute;
+      opacity: 0;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+
+    .custom-file-label {
+      display: block;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid var(--zh-text-gray);
+      border-radius: 6px;
+      background: white;
+      cursor: pointer;
+      text-align: center;
+      transition: border-color 0.2s ease;
+      font-size: 0.9rem;
+      color: #666;
+    }
+
+    .custom-file-label:hover {
+      border-color: var(--zh-purple);
+    }
+
+    .upload-section.active .custom-file-label {
+      border-color: var(--zh-green);
     }
 
     .footer {
@@ -138,19 +387,57 @@
   </div>
 
   <div class="container">
-    <h2>金 案 易</h2>
+    <div class="info-icon">
+      i
+      <div class="info-tooltip">
+        <h3>📋 使用说明</h3>
+        <p>请先下载输入表模板，按要求填写借款信息后再上传</p>
+        <div class="contact-info">
+          <p>如有使用问题，可联系开发者邮箱：</p>
+          <span class="email-copy" onclick="copyEmail()">1162064779@qq.com</span>
+          <span class="copy-feedback" id="copyFeedback">✓ 已复制</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="content-wrapper">
+      <h2>金 案 易</h2>
 
-    <label for="currentDate">到期日</label>
-    <input type="text" id="currentDate" placeholder="例如：2024/10/18" />
-    <div class="note">默认填入今天日期（YYYY/M/D）</div>
+      <label for="currentDate">到期日</label>
+      <input type="text" id="currentDate" placeholder="例如：2024/10/18" />
+      <div class="note">默认填入今天日期（YYYY/M/D）</div>
 
-    <label for="excelFile">上传单个 Excel 文件</label>
-    <input type="file" id="excelFile" accept=".xlsx,.xls" />
+      <button class="download-btn" onclick="downloadTemplate()">
+        <span class="download-icon">📥</span>
+        下载输入表模板
+      </button>
 
-    <label for="excelFolder">上传包含多个 Excel 的文件夹（优先使用）</label>
-    <input type="file" id="excelFolder" webkitdirectory multiple accept=".xlsx,.xls" />
+      <div class="upload-container">
+        <div class="upload-section active" id="singleUploadSection" onclick="selectUploadMode('single')">
+          <div class="upload-icon">📄</div>
+          <h3>单个文件上传</h3>
+          <p>上传一个Excel文件进行处理</p>
+          <div class="custom-file-input">
+            <input type="file" id="excelFile" accept=".xlsx,.xls" onclick="event.stopPropagation()" />
+            <label class="custom-file-label" for="excelFile">选择文件</label>
+          </div>
+        </div>
+        
+        <div class="section-divider"></div>
+        
+        <div class="upload-section inactive" id="folderUploadSection" onclick="selectUploadMode('folder')">
+          <div class="upload-icon">📁</div>
+          <h3>批量文件上传</h3>
+          <p>上传包含多个Excel文件的文件夹进行批量处理</p>
+          <div class="custom-file-input">
+            <input type="file" id="excelFolder" webkitdirectory multiple accept=".xlsx,.xls" onclick="event.stopPropagation()" />
+            <label class="custom-file-label" for="excelFolder">选择文件夹</label>
+          </div>
+        </div>
+      </div>
 
-    <button onclick="handleSubmit()">生成 Excel</button>
+      <button onclick="handleSubmit()">生成 Excel</button>
+    </div>
   </div>
 
   <div class="footer">
@@ -164,7 +451,119 @@
       const today = new Date();
       const formatted = `${today.getFullYear()}/${today.getMonth() + 1}/${today.getDate()}`;
       input.value = formatted;
+      
+      // 监听单文件选择变化
+      const singleFileInput = document.getElementById('excelFile');
+      const singleFileLabel = document.querySelector('label[for="excelFile"]');
+      
+      singleFileInput.addEventListener('change', function() {
+        if (this.files.length > 0) {
+          const fileName = this.files[0].name;
+          // 如果文件名太长，只显示前面部分
+          const displayName = fileName.length > 20 ? fileName.substring(0, 17) + '...' : fileName;
+          singleFileLabel.textContent = displayName;
+        } else {
+          singleFileLabel.textContent = '选择文件';
+        }
+      });
+      
+      // 监听文件夹选择变化
+      const folderInput = document.getElementById('excelFolder');
+      const folderLabel = document.querySelector('label[for="excelFolder"]');
+      
+      folderInput.addEventListener('change', function() {
+        if (this.files.length > 0) {
+          folderLabel.textContent = `已选择 ${this.files.length} 个文件`;
+        } else {
+          folderLabel.textContent = '选择文件夹';
+        }
+      });
     });
+
+    // 下载模板函数
+    function downloadTemplate() {
+      const link = document.createElement('a');
+      link.href = '/download-template';
+      link.download = '输入表.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    // 复制邮箱函数
+    function copyEmail() {
+      event.stopPropagation(); // 阻止事件冒泡
+      
+      const email = '1162064779@qq.com';
+      const feedback = document.getElementById('copyFeedback');
+      
+      // 使用现代剪贴板API
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(email).then(() => {
+          showCopyFeedback(feedback);
+        }).catch(err => {
+          // 如果失败，回退到传统方法
+          fallbackCopyEmail(email, feedback);
+        });
+      } else {
+        // 回退到传统复制方法
+        fallbackCopyEmail(email, feedback);
+      }
+    }
+
+    // 传统复制方法（兼容旧浏览器）
+    function fallbackCopyEmail(email, feedback) {
+      const textArea = document.createElement('textarea');
+      textArea.value = email;
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      
+      try {
+        document.execCommand('copy');
+        showCopyFeedback(feedback);
+      } catch (err) {
+        console.error('复制失败:', err);
+      }
+      
+      document.body.removeChild(textArea);
+    }
+
+    // 显示复制成功反馈
+    function showCopyFeedback(feedback) {
+      feedback.classList.add('show');
+      setTimeout(() => {
+        feedback.classList.remove('show');
+      }, 2000);
+    }
+
+    // 上传模式选择
+    let currentUploadMode = 'single'; // 默认为单个文件模式
+
+    function selectUploadMode(mode) {
+      currentUploadMode = mode;
+      
+      const singleSection = document.getElementById('singleUploadSection');
+      const folderSection = document.getElementById('folderUploadSection');
+      const singleFileLabel = document.querySelector('label[for="excelFile"]');
+      const folderLabel = document.querySelector('label[for="excelFolder"]');
+      
+      if (mode === 'single') {
+        singleSection.className = 'upload-section active';
+        folderSection.className = 'upload-section inactive';
+        // 清空文件夹选择
+        document.getElementById('excelFolder').value = '';
+        folderLabel.textContent = '选择文件夹';
+      } else {
+        singleSection.className = 'upload-section inactive';
+        folderSection.className = 'upload-section active';
+        // 清空单文件选择
+        document.getElementById('excelFile').value = '';
+        singleFileLabel.textContent = '选择文件';
+      }
+    }
 
     function handleSubmit() {
       const currentDateInput = document.getElementById('currentDate');
@@ -175,17 +574,19 @@
         currentDate = `${today.getFullYear()}/${today.getMonth() + 1}/${today.getDate()}`;
       }
 
-      const folderInput = document.getElementById('excelFolder');
-      const folderFiles = folderInput.files;
-
-      const singleFileInput = document.getElementById('excelFile');
-      const singleFile = singleFileInput.files[0];
-
       const formData = new FormData();
       formData.append('currentDate', currentDate);
 
-      if (folderFiles && folderFiles.length > 0) {
-        // 优先处理文件夹上传
+      if (currentUploadMode === 'folder') {
+        // 批量文件上传模式
+        const folderInput = document.getElementById('excelFolder');
+        const folderFiles = folderInput.files;
+
+        if (!folderFiles || folderFiles.length === 0) {
+          alert('请选择包含Excel文件的文件夹');
+          return;
+        }
+
         for (let i = 0; i < folderFiles.length; i++) {
           formData.append('files', folderFiles[i]);
         }
@@ -216,8 +617,16 @@
           window.URL.revokeObjectURL(url);
         });
 
-      } else if (singleFile) {
-        // 单文件上传
+      } else {
+        // 单个文件上传模式
+        const singleFileInput = document.getElementById('excelFile');
+        const singleFile = singleFileInput.files[0];
+
+        if (!singleFile) {
+          alert('请选择一个Excel文件');
+          return;
+        }
+
         formData.append('file', singleFile);
 
         fetch('/generate-excel', {
@@ -255,9 +664,6 @@
           a.remove();
           window.URL.revokeObjectURL(url);
         });
-
-      } else {
-        alert('请上传 Excel 文件 或 文件夹');
       }
     }
   </script>
