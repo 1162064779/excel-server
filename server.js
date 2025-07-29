@@ -1,3 +1,5 @@
+require('./scripts/volume-guard');   // 必须写在任何业务代码之前
+
 const express = require('express');
 const ExcelJS = require('exceljs');
 const multer = require('multer');
@@ -249,7 +251,7 @@ async function generateExcelBuffer(groups = [], infoGroup = {}) {
 
       let tentativeEndDate =
           startDateParsed.add(intimeTerm - 1, 'month').date(interestDay);
-      // 计算“下一个结息日”
+      // 计算"下一个结息日"
       let nextInterestDate = startDateParsed.date(interestDay);
       if (!nextInterestDate.isAfter(startDateParsed)) {
         // 如果当前月的 interestDay 已经过了，则取下个月的 interestDay
@@ -1345,7 +1347,7 @@ async function generateExcelBuffer(groups = [], infoGroup = {}) {
   // 获取合计行
   const sumRow = summarySheet.getRow(ssumIdx);
 
-  // A列：写“合计”
+  // A列：写"合计"
   sumRow.getCell(1).value = '合计';
 
   // 要求和的列号
@@ -1827,7 +1829,7 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
           `第 ${groupIndex + 1} 组 结息日 (${colAmount}12): ${interestDay} 日`);
 
       const cell = sheet.getCell(`${colAmount}14`);
-      // 先拿到单元格的“原始值”(raw)
+      // 先拿到单元格的"原始值"(raw)
       const raw = (typeof cell.value === 'object' && cell.value !== null &&
                    'formula' in cell.value) ?
           cell.value.result  // 公式缓存
@@ -2024,7 +2026,7 @@ app.post('/generate-excel-zip', upload.any(), async (req, res) => {
               interestDay} 日`);
 
           const cell = sheet.getCell(`${colAmount}14`);
-          // ① 先拿到单元格的“原始值”(raw)
+          // ① 先拿到单元格的"原始值"(raw)
           const raw = (typeof cell.value === 'object' && cell.value !== null &&
                        'formula' in cell.value) ?
               cell.value.result  // 公式缓存
