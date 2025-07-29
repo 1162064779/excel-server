@@ -221,7 +221,16 @@ async function generateExcelBuffer(groups = [], infoGroup = {}) {
     let periodsStartRow = startRow + intimeTermOffset + 1;
     let periodsEndRow = -1;
 
+    // 如果设置第一期大于30天，就再加一个月
+    if(!isLarger30){
+      term = term + 1;
+    }
+
     if (startDateParsed.date() === interestDay) {
+      if(!isLarger30){
+        term = term - 1;
+        intimeTerm = intimeTerm - 1;
+      }
       isLarger30 = false;
     }
     // 生成提前还款 (只生成一行)
@@ -943,18 +952,22 @@ async function generateExcelBuffer(groups = [], infoGroup = {}) {
         if (originRowNumbers.includes(rowIdx)) {
           originRowCounter++;
           if (repaymentType === 2) {  // 等额本金
-            // F列 = E5/E8
-            row.getCell(6).value = {formula: `$E$5/$E$8`};
-            // H列加公式
-            row.getCell(8).value = {formula: `B${rowIdx}*$E$6/360*E${rowIdx}`};
-          } else if (repaymentType === 3) {  // 等额本息
-            // F列 = PPMT($E$6/12, A(rowIdx), $E$8, -$E$5, 0)
+            // F列 = ROUND(E5/E8, 2)
             row.getCell(6).value = {
-              formula: `PPMT($E$6/12, A${rowIdx}, $E$8, -$E$5, 0)`
+              formula: `ROUND($E$5/$E$8, 2)`
             };
-            // H列 = IPMT($E$6/12, A(rowIdx), $E$8, -$E$5, 0)
+            // H列 = ROUND(B行号 * $E$6 / 360 * E行号, 2)
             row.getCell(8).value = {
-              formula: `IPMT($E$6/12, A${rowIdx}, $E$8, -$E$5, 0)`
+              formula: `ROUND(B${rowIdx}*$E$6/360*E${rowIdx}, 2)`
+            };
+          } else if (repaymentType === 3) {  // 等额本息
+            // F列 = ROUND(PPMT(...), 2)
+            row.getCell(6).value = {
+              formula: `ROUND(PPMT($E$6/12, A${rowIdx}, $E$8, -$E$5, 0), 2)`
+            };
+            // H列 = ROUND(IPMT(...), 2)
+            row.getCell(8).value = {
+              formula: `ROUND(IPMT($E$6/12, A${rowIdx}, $E$8, -$E$5, 0), 2)`
             };
           }
         }
