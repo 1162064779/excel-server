@@ -200,9 +200,9 @@ async function generateExcelBuffer(groups = [], infoGroup = {}) {
     row0.commit();
 
     // 检查 intimeTerm
-    if (intimeTerm < 0 || intimeTerm > term) {
+    if (intimeTerm < 0 || intimeTerm > term + 1) {
       throw new Error(`提前还款期限 intimeTerm(${
-          intimeTerm}) 超出范围，应在 0-${term} 之间`);
+          intimeTerm}) 超出范围，应在 0-${term + 1} 之间`);
     }
 
     const originRowNumbers = [];    // 记录初始 period 的真实行号
@@ -630,6 +630,56 @@ async function generateExcelBuffer(groups = [], infoGroup = {}) {
             paymentIndex++;  // 移动到下一个 paymentPair
           }
         }
+      }
+    }
+
+    // 如果存在还款但未生成任何期次，补一条基准期次再将所有还款挂到“最后一期”
+    if (newPeriods.length === 0 && paymentPairs.length > 0) {
+      const baseRow = worksheet.getRow(startRow + 1);
+      const baseStartRaw = baseRow.getCell(3).value || startDateParsed;
+      let lastEndDate = dayjs(baseStartRaw);
+      console.log('[fallback] 未生成期次，直接从基准起点挂子期:', {
+        period: term,
+        start: lastEndDate.format('YYYY/MM/DD'),
+        payments: paymentPairs.length
+      });
+
+      let subIndex = 1;
+      while (paymentIndex < paymentPairs.length) {
+        const currentPayment = paymentPairs[paymentIndex];
+        const paymentDate = dayjs(currentPayment.date);
+        const subPeriodName = `${term}(${subIndex})`;
+
+        if (currentPayment.type === '逾期利息') {
+          overdueInterestRowNumbers.push(
+              {date: currentPayment.date, value: currentPayment.value});
+          console.log(`[fallback] 逾期利息跳过挂子期: ${currentPayment.value} @ ${paymentDate.format('YYYY/MM/DD')}`);
+          paymentIndex++;
+          continue;
+        }
+
+        const newPeriod = {
+          period: subPeriodName,
+          start: lastEndDate,
+          end: paymentDate,
+        };
+        newPeriods.push(newPeriod);
+        console.log(`[fallback] 挂子期 ${subPeriodName}: ${newPeriod.start.format('YYYY/MM/DD')} ~ ${newPeriod.end.format('YYYY/MM/DD')}，类型=${currentPayment.type}，金额=${currentPayment.value}`);
+
+        const rowNumber = startRow + intimeTermOffset + newPeriods.length;
+        if (currentPayment.type === '利息') {
+          newPeriod.interest = currentPayment.value;
+          interestRowNumbers.push(rowNumber);
+        } else if (currentPayment.type === '本金') {
+          newPeriod.principal = currentPayment.value;
+          principalRowNumbers.push(rowNumber);
+        }
+
+        lastPeriodRowNumbers.push(rowNumber);
+        insertedRowNumbers.push(rowNumber);
+        subIndex++;
+        paymentIndex++;
+        lastEndDate = paymentDate;
       }
     }
 
@@ -1747,11 +1797,11 @@ app.post('/generate-excel', upload.single('file'), async (req, res) => {
       productName: sheet.getCell('B13').value || ''
     };
     const groups = [];
-    const maxGroups = 30;  // 最多支持 30 组（你可以修改为任意值）
+    const maxGroups = 100;  // 最多支持 100 组
 
     // 每组占 3 列，且中间留 1 列空白 => 每组跨度为 4 列
     const totalColumnsNeeded = maxGroups * 4;
-    const allColumns = generateExcelColumnNames(totalColumnsNeeded);
+    const allColumns = generateExcelColumnNames(totalColumnsNeeded + 10);
 
     for (let groupIndex = 0; groupIndex < maxGroups; groupIndex++) {
       const baseIdx = 3 + groupIndex * 4;
@@ -1941,8 +1991,8 @@ app.post('/generate-excel-zip', upload.any(), async (req, res) => {
         };
 
         const groups = [];
-        const maxGroups = 30;
-        const allColumns = generateExcelColumnNames(maxGroups * 4);
+        const maxGroups = 100;
+        const allColumns = generateExcelColumnNames(maxGroups * 4 + 10);
 
         for (let groupIndex = 0; groupIndex < maxGroups; groupIndex++) {
           const baseIdx = 3 + groupIndex * 4;
